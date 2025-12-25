@@ -65,4 +65,27 @@ public class AuthService {
         userMapper.insert(user);
         return Result.success("注册成功");
     }
+
+    // 在 AuthService 类中添加
+    public Result update(User user) {
+        if (user.getId() == null) {
+            return Result.fail("用户ID不能为空");
+        }
+
+        // 如果修改了用户名，需要检查是否与其他用户重复
+        if (user.getUsername() != null) {
+            User exist = userMapper.selectOne(new LambdaQueryWrapper<User>()
+                    .eq(User::getUsername, user.getUsername())
+                    .ne(User::getId, user.getId())); // 排除自己
+            if (exist != null) {
+                return Result.fail("用户名/昵h称已存在");
+            }
+        }
+
+        // 仅更新非空字段
+        userMapper.updateById(user);
+
+        // 如果修改了用户名，最好返回新的 User 对象或 token，这里简单返回成功
+        return Result.success("更新成功");
+    }
 }

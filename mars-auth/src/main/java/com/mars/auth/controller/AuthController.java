@@ -29,4 +29,10 @@ public class AuthController {
         
         return authService.register(user);
     }
+
+    // 在 AuthController 类中添加
+    @PostMapping("/update")
+    public Result update(@RequestBody User user) {
+        return authService.update(user);
+    }
 }
