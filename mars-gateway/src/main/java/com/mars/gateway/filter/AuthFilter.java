@@ -51,7 +51,7 @@ public class AuthFilter implements GlobalFilter, Ordered {
             String username = claims.get("username").toString();
 
             // 对用户名进行 URL 编码，防止 Header 中传递中文导致乱码或报错
-            String encodedUsername = URLEncoder.encode(username, StandardCharsets.UTF_8);
+            String encodedUsername = URLEncoder.encode(username, StandardCharsets.UTF_8.name());
 
             // 将用户信息放入 Header 传递给下游微服务
             ServerHttpRequest mutatedRequest = request.mutate()
