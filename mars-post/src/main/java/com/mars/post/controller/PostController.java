@@ -3,7 +3,6 @@ package com.mars.post.controller;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.mars.common.Result;
-import com.mars.common.util.JwtUtil;
 import com.mars.post.dto.PostDTO;
 import com.mars.post.entity.Post;
 import com.mars.post.entity.PostContent;
@@ -15,12 +14,13 @@ import com.mars.post.mapper.PostLikeMapper;
 import com.mars.post.mapper.PostMapper;
 import com.mars.post.service.PostService;
 import com.mars.post.utils.S3Service;
-import io.jsonwebtoken.Claims;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.bind.annotation.*;
 
 import java.io.File;
+import java.net.URLDecoder;
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -33,39 +33,47 @@ public class PostController {
     @Autowired private PostMapper postMapper;
     @Autowired private PostContentMapper postContentMapper;
     @Autowired private PostLikeMapper postLikeMapper;
-    @Autowired private PostImageMapper postImageMapper; // ✅ 新增
+    @Autowired private PostImageMapper postImageMapper;
     @Autowired private S3Service s3Service;
 
     @Value("${file.local-path}")
     private String localPath;
 
     /**
-     * 发布帖子 (重构：存入独立图片表)
+     * 发布帖子
+     * 修改说明：完全移除 JWT 解析，直接使用网关传过来的 ID 和 用户名
      */
     @PostMapping("/add")
-    public Result<String> add(@RequestBody PostDTO postDTO, @RequestHeader("Authorization") String token) {
+    public Result<String> add(@RequestBody PostDTO postDTO,
+                              @RequestHeader("X-User-Id") String userIdStr,
+                              @RequestHeader(value = "X-User-Name", required = false) String encodedUsername) {
         try {
-            String realToken = token.substring(7);
-            Claims claims = JwtUtil.parseToken(realToken);
-            Long userId = Long.valueOf(claims.get("userId").toString());
-            String username = claims.get("username", String.class);
+            // 1. 获取 ID (网关已鉴权，这里直接转 Long)
+            Long userId = Long.parseLong(userIdStr);
 
-            // 1. 保存帖子主表
+            // 2. 获取用户名 (需解码，防止乱码)
+            String username = "匿名用户";
+            if (encodedUsername != null) {
+                username = URLDecoder.decode(encodedUsername, StandardCharsets.UTF_8.name());
+            }
+
+            // 3. 组装实体
             Post post = new Post();
             post.setUserId(userId);
             post.setUsername(username);
             post.setTitle(postDTO.getTitle());
             post.setLikeCount(0);
             post.setCommentCount(0);
-            // Service 负责保存 post 和 post_content
+
+            // 4. 调用业务 Service 保存 (主表+内容表)
             postService.publish(post, postDTO.getContent());
 
-            // 2. ✅ 保存图片到独立表 (解析逗号分隔的字符串)
+            // 5. 保存图片
             if (postDTO.getImages() != null && !postDTO.getImages().isEmpty()) {
                 String[] urls = postDTO.getImages().split(",");
                 for (int i = 0; i < urls.length; i++) {
                     PostImage img = new PostImage();
-                    img.setPostId(post.getId()); // ID 由 MybatisPlus 回填
+                    img.setPostId(post.getId()); // ID 由 MyBatis Plus 回填
                     img.setUrl(urls[i].trim());
                     img.setSort(i);
                     postImageMapper.insert(img);
@@ -80,7 +88,7 @@ public class PostController {
     }
 
     /**
-     * 首页列表 (重构：批量组装图片)
+     * 首页列表
      */
     @GetMapping("/list")
     public Result<List<Post>> list(@RequestHeader(value = "X-User-Id", required = false) String userIdStr) {
@@ -88,24 +96,24 @@ public class PostController {
         List<Post> postList = postMapper.selectList(new QueryWrapper<Post>().orderByDesc("create_time"));
         if (postList.isEmpty()) return Result.success(postList);
 
-        // 2. ✅ 批量查图片 (解决 N+1 性能问题)
+        // 2. 批量查图片
         List<Long> postIds = postList.stream().map(Post::getId).collect(Collectors.toList());
         List<PostImage> allImages = postImageMapper.selectList(new LambdaQueryWrapper<PostImage>()
                 .in(PostImage::getPostId, postIds)
                 .orderByAsc(PostImage::getSort));
 
-        // 内存分组：Map<PostId, List<Url>>
+        // 3. 内存分组
         Map<Long, List<String>> imageMap = new HashMap<>();
         for (PostImage img : allImages) {
             imageMap.computeIfAbsent(img.getPostId(), k -> new ArrayList<>()).add(img.getUrl());
         }
 
-        // 3. 组装回 Post 对象 (Post 实体需添加 private List<String> imageList 字段)
+        // 4. 组装数据
         for (Post post : postList) {
             post.setImageList(imageMap.getOrDefault(post.getId(), new ArrayList<>()));
         }
 
-        // 4. 处理点赞状态
+        // 5. 处理点赞状态
         if (userIdStr != null) {
             try {
                 Long userId = Long.parseLong(userIdStr);
@@ -124,7 +132,7 @@ public class PostController {
     }
 
     /**
-     * 帖子详情 (重构：返回图片数组)
+     * 帖子详情
      */
     @GetMapping("/detail/{id}")
     public Result<Map<String, Object>> getDetail(@PathVariable("id") Long id,
@@ -133,7 +141,6 @@ public class PostController {
         if (post == null) return Result.fail("内容不存在");
         PostContent content = postContentMapper.selectById(id);
 
-        // ✅ 查图片
         List<PostImage> images = postImageMapper.selectList(new LambdaQueryWrapper<PostImage>()
                 .eq(PostImage::getPostId, id)
                 .orderByAsc(PostImage::getSort));
@@ -143,7 +150,6 @@ public class PostController {
         data.put("id", post.getId());
         data.put("username", post.getUsername());
         data.put("userId", post.getUserId());
-        // ✅ 直接返回 List，前端无需 split
         data.put("imageList", imageUrls);
         data.put("likeCount", post.getLikeCount());
         data.put("commentCount", post.getCommentCount());
@@ -164,7 +170,7 @@ public class PostController {
     }
 
     /**
-     * 点赞接口 (保持不变)
+     * 点赞接口
      */
     @PostMapping("/like/{postId}")
     public Result like(@PathVariable("postId") Long postId, @RequestHeader(value = "X-User-Id", required = false) String userIdStr) {
@@ -199,7 +205,7 @@ public class PostController {
     }
 
     /**
-     * 极致回源 (保持不变)
+     * 极致回源 (S3 备份)
      */
     @PostMapping("/sync-to-cloud")
     public Result<String> syncToCloud(@RequestParam("fileName") String fileName) {
