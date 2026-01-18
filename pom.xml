@@ -13,6 +13,7 @@
         <module>mars-gateway</module>
         <module>mars-auth</module>
         <module>mars-post</module>
+        <module>mars-chat</module>
     </modules>
 
     <properties>
@@ -48,4 +49,20 @@
             </dependency>
         </dependencies>
     </dependencyManagement>
+
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <version>3.11.0</version>
+                <configuration>
+                    <source>${java.version}</source>
+                    <target>${java.version}</target>
+                    <encoding>UTF-8</encoding>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
 </project>

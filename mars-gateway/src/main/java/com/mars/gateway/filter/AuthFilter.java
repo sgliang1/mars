@@ -21,6 +21,7 @@ import java.nio.charset.StandardCharsets;
  * 1. 移除了重复的硬编码密钥逻辑
  * 2. 统一调用 JwtUtil.parseToken 进行验签
  * 3. 增加了中文用户名的 URLEncode 处理，防止乱码
+ * 4. 新增 WebSocket 鉴权支持（支持从 URL 参数 token 读取）
  */
 @Component
 public class AuthFilter implements GlobalFilter, Ordered {
@@ -31,18 +32,30 @@ public class AuthFilter implements GlobalFilter, Ordered {
         String path = request.getURI().getPath();
 
         // 1. 白名单放行：登录和注册接口不需要 Token
-        if (path.contains("/mars-auth/login") || path.contains("/mars-auth/register")) {
+        if (path.contains("/mars-auth/login") || path.contains("/mars-auth/register") || path.contains("/mars-chat/ws")) {
             return chain.filter(exchange);
         }
 
-        // 2. 检查 Authorization Header 是否存在且格式正确
+        String token = null;
+
+        // 2. 优先尝试从 Header 获取 (HTTP 接口标准)
         String authHeader = request.getHeaders().getFirst("Authorization");
-        if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+        if (authHeader != null && authHeader.startsWith("Bearer ")) {
+            token = authHeader.substring(7); // 去掉 "Bearer "
+        }
+
+        // 3. ⚠️ 新增：如果 Header 没有，尝试从 Query 参数获取 (WebSocket 专用)
+        // 例如：ws://localhost/mars-chat/ws?token=xxxxx
+        if (token == null) {
+            token = request.getQueryParams().getFirst("token");
+        }
+
+        // 4. 如果都拿不到，或者为空，拒绝
+        if (token == null || token.isEmpty()) {
             return unAuthorized(exchange);
         }
 
-        // 3. 截取 Token 并验签
-        String token = authHeader.substring(7); // 去掉 "Bearer "
+        // 5. 验签逻辑 (与之前保持一致)
         try {
             // 直接调用 JwtUtil 解析，逻辑统一
             Claims claims = JwtUtil.parseToken(token);
