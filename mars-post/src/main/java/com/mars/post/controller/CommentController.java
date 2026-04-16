@@ -3,14 +3,21 @@ package com.mars.post.controller;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.mars.common.Result;
 import com.mars.post.entity.Comment;
+import com.mars.post.entity.Post;
 import com.mars.post.mapper.CommentMapper;
+import com.mars.post.mapper.PostMapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
+import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/comment")
@@ -20,7 +27,7 @@ public class CommentController {
     private CommentMapper commentMapper;
 
     @Autowired
-    private com.mars.post.mapper.PostMapper postMapper;
+    private PostMapper postMapper;
 
     /**
      * 发表评论
@@ -48,7 +55,7 @@ public class CommentController {
 
             // 3. 帖子评论数 +1
             if (comment.getPostId() != null) {
-                com.mars.post.entity.Post post = postMapper.selectById(comment.getPostId());
+                Post post = postMapper.selectById(comment.getPostId());
                 if (post != null) {
                     int count = post.getCommentCount() == null ? 0 : post.getCommentCount();
                     post.setCommentCount(count + 1);
@@ -73,5 +80,42 @@ public class CommentController {
                 .eq(Comment::getPostId, postId)
                 .orderByDesc(Comment::getCreateTime));
         return Result.success(list);
+    }
+
+    /**
+     * 当前用户评论记录
+     */
+    @GetMapping("/mine")
+    public Result<List<Map<String, Object>>> mine(@RequestHeader("X-User-Id") String userIdStr) {
+        Long userId = Long.parseLong(userIdStr);
+        List<Comment> comments = commentMapper.selectList(new LambdaQueryWrapper<Comment>()
+                .eq(Comment::getUserId, userId)
+                .orderByDesc(Comment::getCreateTime));
+
+        if (comments.isEmpty()) {
+            return Result.success(Collections.emptyList());
+        }
+
+        Set<Long> postIds = comments.stream()
+                .map(Comment::getPostId)
+                .filter(postId -> postId != null)
+                .collect(Collectors.toSet());
+
+        Map<Long, Post> postMap = postMapper.selectBatchIds(postIds).stream()
+                .collect(Collectors.toMap(Post::getId, post -> post, (left, right) -> left));
+
+        List<Map<String, Object>> records = comments.stream().map(comment -> {
+            Post post = postMap.get(comment.getPostId());
+            Map<String, Object> item = new HashMap<>();
+            item.put("id", comment.getId());
+            item.put("postId", comment.getPostId());
+            item.put("postTitle", post != null ? post.getTitle() : "帖子已删除");
+            item.put("content", comment.getContent());
+            item.put("parentId", comment.getParentId());
+            item.put("createTime", comment.getCreateTime());
+            return item;
+        }).toList();
+
+        return Result.success(records);
     }
 }

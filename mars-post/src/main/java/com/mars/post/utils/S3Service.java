@@ -16,8 +16,6 @@ import java.io.IOException;
 @Service
 public class S3Service {
 
-    // ✅ 修改：改为读取 r2.a 的配置
-    // 在 S3Service.java 中修改这几行
     @Value("${r2.a.access-key}")
     private String accessKey;
 
@@ -39,30 +37,35 @@ public class S3Service {
     public void init() {
         s3Client = AmazonS3ClientBuilder.standard()
                 .withEndpointConfiguration(new AwsClientBuilder.EndpointConfiguration(endpoint, "auto"))
+                .withPathStyleAccessEnabled(true)
+                .withChunkedEncodingDisabled(true)
                 .withCredentials(new AWSStaticCredentialsProvider(new BasicAWSCredentials(accessKey, secretKey)))
                 .build();
     }
 
-    // ✅ 修改：新增这个方法，供 FileController 调用，确保文件名与本地一致
     public String uploadFileWithSpecifiedName(MultipartFile file, String fileName) {
         try {
             ObjectMetadata metadata = new ObjectMetadata();
             metadata.setContentLength(file.getSize());
             metadata.setContentType(file.getContentType());
             s3Client.putObject(bucket, fileName, file.getInputStream(), metadata);
-            // 返回 R2 的访问链接
-            return publicDomain + "/" + fileName;
+            return buildPublicUrl(fileName);
         } catch (IOException e) {
             throw new RuntimeException("图片上传到R2失败", e);
         }
     }
+
     public String restoreToCloud(File file, String fileName) {
         try {
-            // 直接把本地 File 上传回 R2
             s3Client.putObject(bucket, fileName, file);
-            return publicDomain + "/" + fileName;
+            return buildPublicUrl(fileName);
         } catch (Exception e) {
             throw new RuntimeException("同步回云端失败", e);
         }
+    }
+
+    private String buildPublicUrl(String fileName) {
+        String normalizedDomain = publicDomain.endsWith("/") ? publicDomain.substring(0, publicDomain.length() - 1) : publicDomain;
+        return normalizedDomain + "/" + fileName;
     }
 }

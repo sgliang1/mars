@@ -92,28 +92,39 @@ public class PostController {
      */
     @GetMapping("/list")
     public Result<List<Post>> list(@RequestHeader(value = "X-User-Id", required = false) String userIdStr) {
-        // 1. 查帖子
         List<Post> postList = postMapper.selectList(new QueryWrapper<Post>().orderByDesc("create_time"));
-        if (postList.isEmpty()) return Result.success(postList);
+        return Result.success(attachPostExtras(postList, userIdStr));
+    }
 
-        // 2. 批量查图片
+    /**
+     * 当前用户的帖子列表
+     */
+    @GetMapping("/mine")
+    public Result<List<Post>> mine(@RequestHeader("X-User-Id") String userIdStr) {
+        Long userId = Long.parseLong(userIdStr);
+        List<Post> postList = postMapper.selectList(new QueryWrapper<Post>()
+                .eq("user_id", userId)
+                .orderByDesc("create_time"));
+        return Result.success(attachPostExtras(postList, userIdStr));
+    }
+
+    private List<Post> attachPostExtras(List<Post> postList, String userIdStr) {
+        if (postList.isEmpty()) return postList;
+
         List<Long> postIds = postList.stream().map(Post::getId).collect(Collectors.toList());
         List<PostImage> allImages = postImageMapper.selectList(new LambdaQueryWrapper<PostImage>()
                 .in(PostImage::getPostId, postIds)
                 .orderByAsc(PostImage::getSort));
 
-        // 3. 内存分组
         Map<Long, List<String>> imageMap = new HashMap<>();
         for (PostImage img : allImages) {
             imageMap.computeIfAbsent(img.getPostId(), k -> new ArrayList<>()).add(img.getUrl());
         }
 
-        // 4. 组装数据
         for (Post post : postList) {
             post.setImageList(imageMap.getOrDefault(post.getId(), new ArrayList<>()));
         }
 
-        // 5. 处理点赞状态
         if (userIdStr != null) {
             try {
                 Long userId = Long.parseLong(userIdStr);
@@ -122,13 +133,11 @@ public class PostController {
                         .in(PostLike::getPostId, postIds));
                 Set<Long> likedPostIds = likes.stream().map(PostLike::getPostId).collect(Collectors.toSet());
 
-                postList.forEach(p -> {
-                    if (likedPostIds.contains(p.getId())) p.setLiked(true);
-                });
+                postList.forEach(p -> p.setLiked(likedPostIds.contains(p.getId())));
             } catch (Exception e) {}
         }
 
-        return Result.success(postList);
+        return postList;
     }
 
     /**
@@ -148,6 +157,7 @@ public class PostController {
 
         Map<String, Object> data = new HashMap<>();
         data.put("id", post.getId());
+        data.put("title", post.getTitle());
         data.put("username", post.getUsername());
         data.put("userId", post.getUserId());
         data.put("imageList", imageUrls);
@@ -167,6 +177,45 @@ public class PostController {
         }
         data.put("isLiked", isLiked);
         return Result.success(data);
+    }
+
+    /**
+     * 更新帖子
+     */
+    @PostMapping("/update/{id}")
+    public Result<String> update(@PathVariable("id") Long id,
+                                 @RequestBody PostDTO postDTO,
+                                 @RequestHeader("X-User-Id") String userIdStr) {
+        try {
+            Long userId = Long.parseLong(userIdStr);
+            boolean updated = postService.updatePost(id, userId, postDTO);
+            if (!updated) {
+                return Result.fail("帖子不存在或无权限修改");
+            }
+            return Result.success("更新成功");
+        } catch (Exception e) {
+            e.printStackTrace();
+            return Result.fail("更新失败：" + e.getMessage());
+        }
+    }
+
+    /**
+     * 删除帖子
+     */
+    @DeleteMapping("/delete/{id}")
+    public Result<String> delete(@PathVariable("id") Long id,
+                                 @RequestHeader("X-User-Id") String userIdStr) {
+        try {
+            Long userId = Long.parseLong(userIdStr);
+            boolean deleted = postService.deletePost(id, userId);
+            if (!deleted) {
+                return Result.fail("帖子不存在或无权限删除");
+            }
+            return Result.success("删除成功");
+        } catch (Exception e) {
+            e.printStackTrace();
+            return Result.fail("删除失败：" + e.getMessage());
+        }
     }
 
     /**
