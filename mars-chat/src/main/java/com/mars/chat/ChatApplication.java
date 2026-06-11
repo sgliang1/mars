@@ -8,10 +8,10 @@ import org.springframework.context.annotation.ComponentScan;
 
 @SpringBootApplication
 @EnableDiscoveryClient
-// 1. 扫描 common 包，确保能注入 JwtUtil, Result, GlobalExceptionHandler 等通用组件
+// 1. 扫描 common 包，确保能注�?JwtUtil, Result, GlobalExceptionHandler 等通用组件
 @ComponentScan(basePackages = {"com.mars.chat", "com.mars.common"})
 // 2. 扫描 MyBatis Mapper 接口
-@MapperScan("com.mars.chat.mapper")
+@MapperScan("com.mars.chat")
 public class ChatApplication {
 
     public static void main(String[] args) {

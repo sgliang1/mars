@@ -10,6 +10,7 @@
 
     <modules>
         <module>mars-common</module>
+        <module>mars-api</module>
         <module>mars-gateway</module>
         <module>mars-auth</module>
         <module>mars-post</module>

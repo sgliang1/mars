@@ -7,7 +7,7 @@ import org.springframework.cloud.client.discovery.EnableDiscoveryClient;
 
 @SpringBootApplication
 @EnableDiscoveryClient
-@MapperScan("com.mars.post.mapper")
+@MapperScan("com.mars.post")
 public class PostApplication {
     public static void main(String[] args) { SpringApplication.run(PostApplication.class, args); }
 }
