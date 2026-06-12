@@ -18,4 +18,9 @@ public class UserProfile {
     private Integer status;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
+    
+    // 新增三大社交统计冗余字段
+    private Integer followerCount;
+    private Integer followingCount;
+    private Integer totalLikedCount;
 }

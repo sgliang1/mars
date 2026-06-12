@@ -5,6 +5,7 @@ import com.mars.auth.domain.account.LoginResponse;
 import com.mars.auth.domain.account.RegisterRequest;
 import com.mars.auth.domain.account.User;
 import com.mars.auth.domain.account.AuthService;
+import com.mars.auth.domain.account.ProfileDashboardDTO;
 import com.mars.common.Result;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
@@ -30,9 +31,15 @@ public class AuthController {
         return authService.register(user);
     }
 
-    // �?AuthController 类中添加
+    // �?AuthController 类中添加
     @PostMapping("/update")
     public Result update(@RequestBody User user) {
         return authService.update(user);
+    }
+
+    // 给前端 Flutter 我的页面调用的聚合接口
+    @GetMapping("/dashboard/{userId}")
+    public Result<ProfileDashboardDTO> getDashboard(@PathVariable("userId") Long userId) {
+        return authService.getDashboard(userId);
     }
 }

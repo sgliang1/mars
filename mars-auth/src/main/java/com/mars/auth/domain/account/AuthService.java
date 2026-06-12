@@ -5,6 +5,9 @@ import com.mars.auth.domain.account.LoginRequest;
 import com.mars.auth.domain.account.LoginResponse; // �?必须导入这个
 import com.mars.auth.domain.account.User;
 import com.mars.auth.domain.account.UserMapper;
+import com.mars.auth.domain.account.UserProfile;
+import com.mars.auth.domain.account.UserProfileMapper;
+import com.mars.auth.domain.account.ProfileDashboardDTO;
 import com.mars.common.Result;
 import com.mars.common.util.JwtUtil;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -16,6 +19,9 @@ public class AuthService {
 
     @Autowired
     private UserMapper userMapper;
+
+    @Autowired
+    private UserProfileMapper userProfileMapper;
 
     // 密码加密�?
     private final BCryptPasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
@@ -87,5 +93,34 @@ public class AuthService {
 
         // 如果修改了用户名，最好返回新�?User 对象�?token，这里简单返回成�?
         return Result.success("更新成功");
+    }
+
+    // ======================================
+    // 个人中心仪表盘数据组装
+    // ======================================
+    public Result<ProfileDashboardDTO> getDashboard(Long userId) {
+        User user = userMapper.selectById(userId);
+        if (user == null) {
+            return Result.fail("用户不存在");
+        }
+
+        UserProfile profile = userProfileMapper.selectById(userId);
+        if (profile == null) {
+            return Result.fail("用户资料尚未初始化");
+        }
+
+        ProfileDashboardDTO dto = new ProfileDashboardDTO();
+        dto.setUserId(user.getId());
+        dto.setUsername(user.getUsername());
+        dto.setAvatarUrl(profile.getAvatarUrl());
+        dto.setBio(profile.getBio());
+        
+        // 关键性能点：直接读取冗余字段，时间复杂度 O(1)
+        dto.setFollowingCount(profile.getFollowingCount() == null ? 0 : profile.getFollowingCount());
+        dto.setFollowerCount(profile.getFollowerCount() == null ? 0 : profile.getFollowerCount());
+        dto.setTotalLikedCount(profile.getTotalLikedCount() == null ? 0 : profile.getTotalLikedCount());
+        dto.setPostCount(0); // 暂定为0，后续联调 mars-post 补充
+        
+        return Result.success(dto);
     }
 }
