@@ -27,7 +27,7 @@ public class ConversationController {
     }
 
     @GetMapping("/{conversationId}")
-    public Result<Map<String, Object>> detail(@PathVariable Long conversationId,
+    public Result<Map<String, Object>> detail(@PathVariable("conversationId") Long conversationId,
                                               @RequestHeader("X-User-Id") String userIdStr) {
         try {
             return Result.success(conversationService.getSummary(parseUserId(userIdStr), conversationId));
@@ -40,7 +40,7 @@ public class ConversationController {
     }
 
     @GetMapping("/{conversationId}/messages")
-    public Result<List<Map<String, Object>>> messages(@PathVariable Long conversationId,
+    public Result<List<Map<String, Object>>> messages(@PathVariable("conversationId") Long conversationId,
                                                       @RequestHeader("X-User-Id") String userIdStr) {
         try {
             return Result.success(conversationService.listMessages(parseUserId(userIdStr), conversationId));
@@ -85,7 +85,7 @@ public class ConversationController {
     }
 
     @PostMapping("/{conversationId}/read")
-    public Result<Map<String, Object>> markRead(@PathVariable Long conversationId,
+    public Result<Map<String, Object>> markRead(@PathVariable("conversationId") Long conversationId,
                                                 @RequestHeader("X-User-Id") String userIdStr) {
         try {
             return Result.success(conversationService.markRead(parseUserId(userIdStr), conversationId));
@@ -96,25 +96,25 @@ public class ConversationController {
     }
 
     @PostMapping("/{conversationId}/mute")
-    public Result<Map<String, Object>> toggleMute(@PathVariable Long conversationId,
+    public Result<Map<String, Object>> toggleMute(@PathVariable("conversationId") Long conversationId,
                                                   @RequestHeader("X-User-Id") String userIdStr) {
         return toggleState(userIdStr, conversationId, "mute");
     }
 
     @PostMapping("/{conversationId}/pin")
-    public Result<Map<String, Object>> togglePin(@PathVariable Long conversationId,
+    public Result<Map<String, Object>> togglePin(@PathVariable("conversationId") Long conversationId,
                                                  @RequestHeader("X-User-Id") String userIdStr) {
         return toggleState(userIdStr, conversationId, "pin");
     }
 
     @PostMapping("/{conversationId}/archive")
-    public Result<Map<String, Object>> toggleArchive(@PathVariable Long conversationId,
+    public Result<Map<String, Object>> toggleArchive(@PathVariable("conversationId") Long conversationId,
                                                      @RequestHeader("X-User-Id") String userIdStr) {
         return toggleState(userIdStr, conversationId, "archive");
     }
 
     @PostMapping("/{conversationId}/messages")
-    public Result<Map<String, Object>> sendMessage(@PathVariable Long conversationId,
+    public Result<Map<String, Object>> sendMessage(@PathVariable("conversationId") Long conversationId,
                                                    @RequestBody Map<String, Object> body,
                                                    @RequestHeader("X-User-Id") String userIdStr,
                                                    @RequestHeader(value = "X-Username", required = false) String username) {

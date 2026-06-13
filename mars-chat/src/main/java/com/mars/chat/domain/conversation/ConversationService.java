@@ -65,9 +65,13 @@ public class ConversationService {
                 .orderByDesc(Conversation::getId);
 
         if ("session".equals(scope)) {
-            query.in(Conversation::getType, TYPE_PUBLIC, TYPE_DIRECT, TYPE_GROUP);
+            // 像微信一样平铺：私信、群聊、系统通知全部展示在消息列表
+            query.in(Conversation::getType, TYPE_DIRECT, TYPE_GROUP, TYPE_SYSTEM);
         } else if ("notification".equals(scope)) {
             query.eq(Conversation::getType, TYPE_SYSTEM);
+        } else {
+            // 默认情况下也不返回公共频道
+            query.ne(Conversation::getType, TYPE_PUBLIC);
         }
 
         return conversationMapper.selectList(query).stream()
@@ -244,6 +248,7 @@ public class ConversationService {
         LocalDateTime now = LocalDateTime.now();
         notificationService.ensureDefaultNotifications(userId);
 
+        // 1. 保留公共频道（虽然不在消息列表展示了，但发现页底层还需要这个通道）
         Conversation publicConversation = ensureConversation(
                 TYPE_PUBLIC,
                 "public-lobby",
@@ -259,32 +264,10 @@ public class ConversationService {
         ensureSeedMessage(publicConversation.getId(), "system", "公共频道",
                 "公共频道用于公开讨论、群组活动和通知", now.minusMinutes(12));
 
-        Conversation directConversation = ensureConversation(
-                TYPE_DIRECT,
-                "seed-direct-" + userId,
-                "私信",
-                "一对一对话，已读状态和归档等功能控制在这里。",
-                now.minusHours(1)
-        );
-        ensureMember(directConversation.getId(), userId);
-        ensureSeedMessage(directConversation.getId(), "peer", "对方账号",
-                "私信页面现在可以帮你管理对话，已读状态和归档也在这里了。", now.minusHours(2));
+        // 【高能预警：这里原有的 seed-direct 和 seed-group 已经被彻底删除！】
+        // 【以后只有用户真正发起私信时，才会生成真实会话】
 
-        Conversation groupConversation = ensureConversation(
-                TYPE_GROUP,
-                "seed-group-" + userId,
-                "群组对话",
-                "群组负责成员协作，所有话题和任务都可以为多人展开。",
-                now.minusHours(3)
-        );
-        ConversationMember groupMember = ensureMember(groupConversation.getId(), userId);
-        if (!Boolean.TRUE.equals(groupMember.getPinned())) {
-            groupMember.setPinned(true);
-            conversationMemberMapper.updateById(groupMember);
-        }
-        ensureSeedMessage(groupConversation.getId(), "owner", "群主",
-                "这个群组用于项目协作，重要说明和对话都聚集在此。", now.minusHours(4));
-
+        // 2. 保留系统通知
         Conversation systemConversation = ensureConversation(
                 TYPE_SYSTEM,
                 "system-center",
@@ -416,6 +399,8 @@ public class ConversationService {
         data.put("isArchived", Boolean.TRUE.equals(member.getArchived()));
         data.put("peerUserId", peerUserId);
         data.put("memberCount", memberCount);
+        // 为私信生成对方的头像URL标识
+        data.put("avatarUrl", StringUtils.hasText(peerUserId) ? "/api/users/" + peerUserId + "/avatar" : "");
         return data;
     }
 

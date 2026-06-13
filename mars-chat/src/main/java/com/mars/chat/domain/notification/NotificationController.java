@@ -27,7 +27,7 @@ public class NotificationController {
     }
 
     @PostMapping("/{id}/read")
-    public Result<Map<String, Object>> markRead(@PathVariable Long id,
+    public Result<Map<String, Object>> markRead(@PathVariable("id") Long id,
                                                 @RequestHeader("X-User-Id") String userIdStr) {
         try {
             return Result.success(notificationService.markRead(parseUserId(userIdStr), id));
