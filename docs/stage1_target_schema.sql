@@ -81,6 +81,7 @@ CREATE TABLE IF NOT EXISTS post_browse_history (
 -- 建议为现有内容表补索引
 -- ALTER TABLE post ADD KEY idx_post_user_time (user_id, create_time);
 -- ALTER TABLE post ADD KEY idx_post_create_time (create_time);
+-- ALTER TABLE post ADD COLUMN share_count INT NOT NULL DEFAULT 0 COMMENT '转发数' AFTER comment_count;
 -- ALTER TABLE post_image ADD KEY idx_post_image_post_sort (post_id, sort);
 -- ALTER TABLE post_like ADD UNIQUE KEY uk_post_like_user_post (user_id, post_id);
 -- ALTER TABLE post_like ADD KEY idx_post_like_post (post_id);

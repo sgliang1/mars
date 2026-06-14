@@ -15,6 +15,7 @@ public class UserProfile {
     private String avatarUrl;
     private String bio;
     private Integer gender;
+    private String birthday;
     private Integer status;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;

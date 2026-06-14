@@ -8,6 +8,9 @@ public class ProfileDashboardDTO {
     private String username;
     private String avatarUrl;
     private String bio;
+    private Integer gender;
+    private String birthday;
+    private String ipLocation;
     
     // 核心关注指标，与 Flutter 前端模型强绑定
     private Integer followingCount;

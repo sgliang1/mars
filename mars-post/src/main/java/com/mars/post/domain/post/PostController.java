@@ -64,6 +64,7 @@ public class PostController {
             post.setTitle(postDTO.getTitle());
             post.setLikeCount(0);
             post.setCommentCount(0);
+            post.setShareCount(0);
 
             // 4. 调用业务 Service 保存 (主表+内容�?
             postService.publish(post, postDTO.getContent());
@@ -162,6 +163,7 @@ public class PostController {
         data.put("imageList", imageUrls);
         data.put("likeCount", post.getLikeCount());
         data.put("commentCount", post.getCommentCount());
+        data.put("shareCount", post.getShareCount());
         data.put("createTime", post.getCreateTime());
         data.put("content", content != null ? content.getContent() : "");
 

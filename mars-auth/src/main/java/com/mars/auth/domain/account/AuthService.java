@@ -14,6 +14,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
 
+import jakarta.servlet.http.HttpServletRequest;
+
 @Service
 public class AuthService {
 
@@ -98,7 +100,7 @@ public class AuthService {
     // ======================================
     // 个人中心仪表盘数据组装
     // ======================================
-    public Result<ProfileDashboardDTO> getDashboard(Long userId) {
+    public Result<ProfileDashboardDTO> getDashboard(Long userId, HttpServletRequest request) {
         User user = userMapper.selectById(userId);
         if (user == null) {
             return Result.fail("用户不存在");
@@ -114,6 +116,9 @@ public class AuthService {
         dto.setUsername(user.getUsername());
         dto.setAvatarUrl(profile.getAvatarUrl());
         dto.setBio(profile.getBio());
+        dto.setGender(profile.getGender());
+        dto.setBirthday(profile.getBirthday());
+        dto.setIpLocation(resolveIpLocation(request));
         
         // 关键性能点：直接读取冗余字段，时间复杂度 O(1)
         dto.setFollowingCount(profile.getFollowingCount() == null ? 0 : profile.getFollowingCount());
@@ -122,5 +127,74 @@ public class AuthService {
         dto.setPostCount(0); // 暂定为0，后续联调 mars-post 补充
         
         return Result.success(dto);
+    }
+
+    private String resolveIpLocation(HttpServletRequest request) {
+        if (request == null) return "未知";
+        String ip = request.getHeader("X-Forwarded-For");
+        if (ip == null || ip.isBlank()) {
+            ip = request.getHeader("X-Real-IP");
+        }
+        if (ip == null || ip.isBlank()) {
+            ip = request.getRemoteAddr();
+        }
+        // TODO: 接入 IP 归属地 SDK（如 ip2region）解析真实地理位置
+        return ip != null && !ip.isBlank() ? ip : "未知";
+    }
+
+    public Result updateProfile(UpdateProfileRequest request) {
+        if (request.getUserId() == null) {
+            return Result.fail("用户ID不能为空");
+        }
+
+        // 1. 更新 user 表（用户名）
+        if (request.getUsername() != null && !request.getUsername().isBlank()) {
+            User exist = userMapper.selectOne(new LambdaQueryWrapper<User>()
+                    .eq(User::getUsername, request.getUsername())
+                    .ne(User::getId, request.getUserId()));
+            if (exist != null) {
+                return Result.fail("昵称已被占用");
+            }
+            User user = new User();
+            user.setId(request.getUserId());
+            user.setUsername(request.getUsername());
+            userMapper.updateById(user);
+        }
+
+        // 2. 查询或初始化 user_profile
+        UserProfile profile = userProfileMapper.selectById(request.getUserId());
+        final boolean isNewProfile = (profile == null);
+        if (isNewProfile) {
+            profile = new UserProfile();
+            profile.setUserId(request.getUserId());
+        }
+
+        boolean needUpdateProfile = false;
+        if (request.getBio() != null) {
+            profile.setBio(request.getBio());
+            needUpdateProfile = true;
+        }
+        if (request.getAvatarUrl() != null) {
+            profile.setAvatarUrl(request.getAvatarUrl());
+            needUpdateProfile = true;
+        }
+        if (request.getGender() != null) {
+            profile.setGender(request.getGender());
+            needUpdateProfile = true;
+        }
+        if (request.getBirthday() != null) {
+            profile.setBirthday(request.getBirthday());
+            needUpdateProfile = true;
+        }
+
+        if (needUpdateProfile) {
+            if (isNewProfile) {
+                userProfileMapper.insert(profile);
+            } else {
+                userProfileMapper.updateById(profile);
+            }
+        }
+
+        return Result.success("资料更新成功");
     }
 }

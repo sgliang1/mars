@@ -10,6 +10,8 @@ import com.mars.common.Result;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
+import jakarta.servlet.http.HttpServletRequest;
+
 @RestController
 public class AuthController {
 
@@ -39,7 +41,14 @@ public class AuthController {
 
     // 给前端 Flutter 我的页面调用的聚合接口
     @GetMapping("/dashboard/{userId}")
-    public Result<ProfileDashboardDTO> getDashboard(@PathVariable("userId") Long userId) {
-        return authService.getDashboard(userId);
+    public Result<ProfileDashboardDTO> getDashboard(@PathVariable("userId") Long userId,
+                                                     HttpServletRequest request) {
+        return authService.getDashboard(userId, request);
+    }
+
+    // 更新完整个人资料（用户表 + user_profile 表）
+    @PostMapping("/update-profile")
+    public Result updateProfile(@RequestBody UpdateProfileRequest request) {
+        return authService.updateProfile(request);
     }
 }
