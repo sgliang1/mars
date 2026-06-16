@@ -11,6 +11,7 @@ import com.mars.post.domain.post.PostContentMapper;
 import com.mars.post.domain.post.PostImageMapper;
 import com.mars.post.domain.post.PostLikeMapper;
 import com.mars.post.domain.post.PostMapper;
+import com.mars.post.domain.notification.NotificationHelper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -26,15 +27,16 @@ public class PostService {
     @Autowired private PostImageMapper postImageMapper;
     @Autowired private PostLikeMapper postLikeMapper;
     @Autowired private CommentMapper commentMapper;
+    @Autowired private NotificationHelper notificationHelper;
 
-    @Transactional // 微博式发布：摘要和正文分别存入两张表
+    @Transactional // ??????????????????
     public void publish(Post post, String fullContent) {
         post.setSummary(buildSummary(fullContent));
         
-        // 2. 插入主表，获取自�?ID
+        // 2. ??????????ID
         postMapper.insert(post); 
         
-        // 3. 关联 ID 插入详情�?
+        // 3. ?? ID ??????
         PostContent pc = new PostContent();
         pc.setPostId(post.getId());
         pc.setContent(fullContent);
@@ -97,6 +99,42 @@ public class PostService {
         contentMapper.deleteById(postId);
         postMapper.deleteById(postId);
         return true;
+    }
+
+    /**
+     * ??/???? ? ?? + ?????
+     * @return "liked" ???????"unliked" ??????
+     */
+    @Transactional
+    public String toggleLike(Long postId, Long userId, String username) {
+        Post post = postMapper.selectById(postId);
+        if (post == null) {
+            throw new IllegalArgumentException("?????");
+        }
+
+        PostLike existingLike = postLikeMapper.selectOne(new LambdaQueryWrapper<PostLike>()
+                .eq(PostLike::getPostId, postId)
+                .eq(PostLike::getUserId, userId));
+
+        if (existingLike != null) {
+            postLikeMapper.deleteById(existingLike.getId());
+            postMapper.decrementLikeCount(postId);
+            return "unliked";
+        } else {
+            PostLike like = new PostLike();
+            like.setPostId(postId);
+            like.setUserId(userId);
+            like.setCreateTime(java.time.LocalDateTime.now());
+            postLikeMapper.insert(like);
+            postMapper.incrementLikeCount(postId);
+
+            // ??????????????
+            try {
+                notificationHelper.notifyLike(userId, username != null ? username : "????", postId);
+            } catch (Exception ignored) {}
+
+            return "liked";
+        }
     }
 
     private String buildSummary(String content) {

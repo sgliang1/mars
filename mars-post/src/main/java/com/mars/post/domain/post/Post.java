@@ -25,6 +25,9 @@ public class Post {
     @TableField(exist = false)
     private List<String> imageList;
 
+    @TableField(exist = false)
+    private String contentPreview;
+
     private Integer likeCount;
     private Integer commentCount;
     private Integer shareCount;

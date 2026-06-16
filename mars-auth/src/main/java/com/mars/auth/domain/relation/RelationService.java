@@ -2,6 +2,8 @@ package com.mars.auth.domain.relation;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.mars.auth.domain.account.UserProfileMapper;
+import com.mars.common.model.Notification;
+import com.mars.auth.domain.notification.NotificationMapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -18,6 +20,9 @@ public class RelationService {
 
     @Autowired
     private UserProfileMapper userProfileMapper;
+
+    @Autowired
+    private NotificationMapper notificationMapper;
 
     public List<Map<String, Object>> getFollowingList(Long userId) {
         return userRelationMapper.selectFollowingList(userId);
@@ -40,7 +45,7 @@ public class RelationService {
     }
 
     @Transactional
-    public void follow(Long followerId, Long followedId) {
+    public void follow(Long followerId, Long followedId, String followerName) {
         if (followerId.equals(followedId)) {
             throw new IllegalArgumentException("不能关注自己");
         }
@@ -58,6 +63,20 @@ public class RelationService {
         userProfileMapper.updateFollowingCount(followerId, 1);
         // 被关注者 follower_count +1
         userProfileMapper.updateFollowerCount(followedId, 1);
+
+        // 写入关注通知
+        try {
+            Notification n = new Notification();
+            n.setUserId(followedId);
+            n.setCategory("interaction");
+            n.setTitle(followerName != null ? followerName : "匿名用户");
+            n.setContent("{\"actorId\":\"" + followerId + "\"}");
+            n.setSourceType("follow");
+            n.setSourceId(null);
+            n.setReadStatus(0);
+            n.setCreatedAt(LocalDateTime.now());
+            notificationMapper.insert(n);
+        } catch (Exception ignored) {}
     }
 
     @Transactional

@@ -154,20 +154,6 @@ public class PostRecordService {
     }
 
     private void trimHistory(Long userId) {
-        List<PostBrowseHistory> allHistory = postBrowseHistoryMapper.selectList(new LambdaQueryWrapper<PostBrowseHistory>()
-                .eq(PostBrowseHistory::getUserId, userId)
-                .orderByDesc(PostBrowseHistory::getLastViewedAt)
-                .orderByDesc(PostBrowseHistory::getId));
-        if (allHistory.size() <= HISTORY_LIMIT) {
-            return;
-        }
-
-        List<Long> staleIds = allHistory.subList(HISTORY_LIMIT, allHistory.size()).stream()
-                .map(PostBrowseHistory::getId)
-                .filter(Objects::nonNull)
-                .toList();
-        if (!staleIds.isEmpty()) {
-            postBrowseHistoryMapper.delete(new LambdaQueryWrapper<PostBrowseHistory>().in(PostBrowseHistory::getId, staleIds));
-        }
+        postBrowseHistoryMapper.trimHistory(userId, HISTORY_LIMIT);
     }
 }

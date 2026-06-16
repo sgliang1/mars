@@ -6,6 +6,7 @@ import com.mars.auth.domain.account.RegisterRequest;
 import com.mars.auth.domain.account.User;
 import com.mars.auth.domain.account.AuthService;
 import com.mars.auth.domain.account.ProfileDashboardDTO;
+import com.mars.auth.domain.dashboard.DashboardService;
 import com.mars.common.Result;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
@@ -17,6 +18,9 @@ public class AuthController {
 
     @Autowired
     private AuthService authService;
+
+    @Autowired
+    private DashboardService dashboardService;
 
     @PostMapping("/login")
     public Result<LoginResponse> login(@RequestBody LoginRequest request) {
@@ -33,21 +37,23 @@ public class AuthController {
         return authService.register(user);
     }
 
-    // �?AuthController 类中添加
-    @PostMapping("/update")
-    public Result update(@RequestBody User user) {
-        return authService.update(user);
+    // PUT /user - 更新用户基本信息
+    @PutMapping("/user")
+    public Result update(@RequestHeader("X-User-Id") String userIdStr,
+                         @RequestBody UpdateUserRequest request) {
+        Long userId = Long.parseLong(userIdStr);
+        return authService.update(userId, request);
     }
 
     // 给前端 Flutter 我的页面调用的聚合接口
     @GetMapping("/dashboard/{userId}")
     public Result<ProfileDashboardDTO> getDashboard(@PathVariable("userId") Long userId,
                                                      HttpServletRequest request) {
-        return authService.getDashboard(userId, request);
+        return dashboardService.getDashboard(userId, request);
     }
 
     // 更新完整个人资料（用户表 + user_profile 表）
-    @PostMapping("/update-profile")
+    @PutMapping("/user/profile")
     public Result updateProfile(@RequestBody UpdateProfileRequest request) {
         return authService.updateProfile(request);
     }

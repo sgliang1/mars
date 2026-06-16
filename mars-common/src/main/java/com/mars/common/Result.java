@@ -18,7 +18,7 @@ public class Result<T> {
     }
 
     // 成功但不带数据（方便仅返回消息的情况）
-    public static <T> Result<T> success(String msg) {
+    public static <T> Result<T> successMessage(String msg) {
         Result<T> r = new Result<>();
         r.code = 200;
         r.msg = msg;

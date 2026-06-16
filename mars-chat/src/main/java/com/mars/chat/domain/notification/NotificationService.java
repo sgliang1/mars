@@ -1,7 +1,7 @@
 package com.mars.chat.domain.notification;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
-import com.mars.chat.domain.notification.Notification;
+import com.mars.common.model.Notification;
 import com.mars.chat.domain.notification.NotificationMapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -39,16 +39,7 @@ public class NotificationService {
     @Transactional
     public int markAllRead(Long userId) {
         ensureDefaultNotifications(userId);
-        List<Notification> list = notificationMapper.selectList(new LambdaQueryWrapper<Notification>()
-                .eq(Notification::getUserId, userId)
-                .eq(Notification::getReadStatus, 0));
-        LocalDateTime now = LocalDateTime.now();
-        for (Notification notification : list) {
-            notification.setReadStatus(1);
-            notification.setReadAt(now);
-            notificationMapper.updateById(notification);
-        }
-        return list.size();
+        return notificationMapper.markAllReadByUserId(userId);
     }
 
     public int countUnread(Long userId) {

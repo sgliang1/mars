@@ -74,8 +74,23 @@ public class ConversationService {
             query.ne(Conversation::getType, TYPE_PUBLIC);
         }
 
-        return conversationMapper.selectList(query).stream()
-                .map(conversation -> toSummaryMap(conversation, memberMap.get(conversation.getId()), userId))
+        List<Conversation> conversations = conversationMapper.selectList(query);
+        if (conversations.isEmpty()) {
+            return List.of();
+        }
+
+        // 批量预加载 memberCount 和 latestPreview，消除 N+1
+        List<Long> convIds = conversations.stream().map(Conversation::getId).toList();
+        Map<Long, Integer> memberCountMap = new LinkedHashMap<>();
+        conversationMemberMapper.batchCountMembers(convIds).forEach(row ->
+                memberCountMap.put(((Number) row.get("conversationId")).longValue(), ((Number) row.get("cnt")).intValue()));
+        Map<Long, String> previewMap = new LinkedHashMap<>();
+        conversationMessageMapper.batchLatestMessages(convIds).forEach(msg -> {
+            previewMap.putIfAbsent(msg.getConversationId(), msg.getContent());
+        });
+
+        return conversations.stream()
+                .map(conversation -> toSummaryMap(conversation, memberMap.get(conversation.getId()), userId, memberCountMap, previewMap))
                 .toList();
     }
 
@@ -366,6 +381,30 @@ public class ConversationService {
         return member;
     }
 
+    // 批量版本：使用预加载的 memberCountMap 和 previewMap，避免 N+1 查询
+    private Map<String, Object> toSummaryMap(Conversation conversation, ConversationMember member, Long userId,
+                                              Map<Long, Integer> memberCountMap, Map<Long, String> previewMap) {
+        String title = conversation.getTitle();
+        String preview = previewMap.getOrDefault(conversation.getId(), conversation.getDescription() == null ? "" : conversation.getDescription());
+        int unreadCount = member.getUnreadCount() == null ? 0 : member.getUnreadCount();
+        String description = conversation.getDescription() == null ? "" : conversation.getDescription();
+        String peerUserId = "";
+        int memberCount = memberCountMap.getOrDefault(conversation.getId(), 0);
+
+        if (TYPE_DIRECT.equals(conversation.getType())) {
+            title = resolveDirectTitle(conversation, userId);
+            description = "和 " + title + " 的一对一对话，已读、静音和归档都在这里闭环。";
+            peerUserId = resolveDirectPeerUserId(conversation, userId);
+        } else if (TYPE_SYSTEM.equals(conversation.getType())) {
+            title = "系统通知";
+            preview = notificationService.latestPreview(userId);
+            unreadCount = notificationService.countUnread(userId);
+        }
+
+        return buildSummaryData(conversation, member, userId, title, preview, unreadCount, description, peerUserId, memberCount);
+    }
+
+    // 单条版本：用于 getSummary / markRead 等单会话场景
     private Map<String, Object> toSummaryMap(Conversation conversation, ConversationMember member, Long userId) {
         String title = conversation.getTitle();
         String preview = latestPreview(conversation);
@@ -384,6 +423,12 @@ public class ConversationService {
             unreadCount = notificationService.countUnread(userId);
         }
 
+        return buildSummaryData(conversation, member, userId, title, preview, unreadCount, description, peerUserId, memberCount);
+    }
+
+    private Map<String, Object> buildSummaryData(Conversation conversation, ConversationMember member, Long userId,
+                                                  String title, String preview, int unreadCount,
+                                                  String description, String peerUserId, int memberCount) {
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("id", conversation.getId().toString());
         data.put("kind", toRouteSegment(conversation.getType()));

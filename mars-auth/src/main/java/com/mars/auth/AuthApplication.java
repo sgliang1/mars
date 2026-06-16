@@ -2,12 +2,12 @@ package com.mars.auth;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
-// 👇 1. 这一行必须加�?
+import org.springframework.cloud.openfeign.EnableFeignClients;
 import org.springframework.context.annotation.ComponentScan;
 
 @SpringBootApplication
-// 👇 2. 这一行必须加！显式告�?Spring：“去�?common 包里的东西也给我扫进来！�?
-@ComponentScan(basePackages = {"com.mars.auth", "com.mars.common"})
+@EnableFeignClients(basePackages = "com.mars.api")
+@ComponentScan(basePackages = {"com.mars.auth", "com.mars.common", "com.mars.api"})
 public class AuthApplication {
 
     public static void main(String[] args) {

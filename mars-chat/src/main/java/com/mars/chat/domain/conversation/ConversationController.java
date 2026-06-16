@@ -17,7 +17,9 @@ public class ConversationController {
 
     @GetMapping
     public Result<List<Map<String, Object>>> list(@RequestParam(value = "scope", required = false) String scope,
-                                                  @RequestHeader("X-User-Id") String userIdStr) {
+                                                  @RequestHeader("X-User-Id") String userIdStr,
+                                                  @RequestParam(value = "page", defaultValue = "1") int page,
+                                                  @RequestParam(value = "size", defaultValue = "50") int size) {
         try {
             return Result.success(conversationService.listSummaries(parseUserId(userIdStr), scope));
         } catch (Exception e) {

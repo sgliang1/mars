@@ -4,6 +4,8 @@ import com.mars.common.Result;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
+import java.net.URLDecoder;
+import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -39,11 +41,16 @@ public class RelationController {
 
     @PostMapping("/follow/{userId}")
     public Result<String> follow(@PathVariable("userId") Long followedId,
-                                  @RequestHeader("X-User-Id") String userIdStr) {
+                                 @RequestHeader("X-User-Id") String userIdStr,
+                                 @RequestHeader(value = "X-User-Name", required = false) String encodedUsername) {
         try {
             Long followerId = Long.parseLong(userIdStr);
-            relationService.follow(followerId, followedId);
-            return Result.success("关注成功");
+            String username = null;
+            if (encodedUsername != null) {
+                username = URLDecoder.decode(encodedUsername, StandardCharsets.UTF_8.name());
+            }
+            relationService.follow(followerId, followedId, username);
+            return Result.successMessage("关注成功");
         } catch (IllegalArgumentException e) {
             return Result.fail(e.getMessage());
         } catch (Exception e) {
@@ -58,7 +65,7 @@ public class RelationController {
         try {
             Long followerId = Long.parseLong(userIdStr);
             relationService.unfollow(followerId, followedId);
-            return Result.success("取消关注成功");
+            return Result.successMessage("取消关注成功");
         } catch (IllegalArgumentException e) {
             return Result.fail(e.getMessage());
         } catch (Exception e) {

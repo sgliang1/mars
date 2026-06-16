@@ -50,7 +50,7 @@ public class PostRecordController {
         try {
             Long userId = Long.parseLong(userIdStr);
             postRecordService.removeFavorite(userId, postId);
-            return Result.success("Favorite removed");
+            return Result.successMessage("Favorite removed");
         } catch (Exception e) {
             e.printStackTrace();
             return Result.fail("Failed to remove favorite");
@@ -62,7 +62,7 @@ public class PostRecordController {
         try {
             Long userId = Long.parseLong(userIdStr);
             postRecordService.clearFavorites(userId);
-            return Result.success("Favorites cleared");
+            return Result.successMessage("Favorites cleared");
         } catch (Exception e) {
             e.printStackTrace();
             return Result.fail("Failed to clear favorites");
@@ -86,7 +86,7 @@ public class PostRecordController {
         try {
             Long userId = Long.parseLong(userIdStr);
             postRecordService.recordHistory(userId, postId);
-            return Result.success("History recorded");
+            return Result.successMessage("History recorded");
         } catch (IllegalArgumentException e) {
             return Result.fail(e.getMessage());
         } catch (Exception e) {
@@ -101,7 +101,7 @@ public class PostRecordController {
         try {
             Long userId = Long.parseLong(userIdStr);
             postRecordService.removeHistory(userId, postId);
-            return Result.success("History removed");
+            return Result.successMessage("History removed");
         } catch (Exception e) {
             e.printStackTrace();
             return Result.fail("Failed to remove history");
@@ -113,7 +113,7 @@ public class PostRecordController {
         try {
             Long userId = Long.parseLong(userIdStr);
             postRecordService.clearHistory(userId);
-            return Result.success("History cleared");
+            return Result.successMessage("History cleared");
         } catch (Exception e) {
             e.printStackTrace();
             return Result.fail("Failed to clear history");

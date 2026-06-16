@@ -17,7 +17,9 @@ public class NotificationController {
     private NotificationService notificationService;
 
     @GetMapping
-    public Result<List<Map<String, Object>>> list(@RequestHeader("X-User-Id") String userIdStr) {
+    public Result<List<Map<String, Object>>> list(@RequestHeader("X-User-Id") String userIdStr,
+                                                  @RequestParam(value = "page", defaultValue = "1") int page,
+                                                  @RequestParam(value = "size", defaultValue = "50") int size) {
         try {
             return Result.success(notificationService.listNotifications(parseUserId(userIdStr)));
         } catch (Exception e) {

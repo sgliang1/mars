@@ -13,10 +13,25 @@ CREATE TABLE IF NOT EXISTS user_profile (
     bio VARCHAR(255) NULL COMMENT '个人简介',
     gender TINYINT NULL COMMENT '0未知 1男 2女',
     status TINYINT NOT NULL DEFAULT 1 COMMENT '1正常 0禁用',
+    birthday VARCHAR(16) NULL COMMENT '生日(YYYY-MM-DD)',
+    follower_count INT NOT NULL DEFAULT 0 COMMENT '粉丝数',
+    following_count INT NOT NULL DEFAULT 0 COMMENT '关注数',
+    total_liked_count INT NOT NULL DEFAULT 0 COMMENT '获赞总数',
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     PRIMARY KEY (user_id)
 ) COMMENT='用户资料表';
+
+-- 关注关系表
+CREATE TABLE IF NOT EXISTS user_relation (
+    id BIGINT NOT NULL AUTO_INCREMENT,
+    follower_id BIGINT NOT NULL COMMENT '关注者用户ID',
+    followed_id BIGINT NOT NULL COMMENT '被关注者用户ID',
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_user_relation (follower_id, followed_id),
+    KEY idx_user_relation_followed (followed_id)
+) COMMENT='用户关注关系表';
 
 -- 建议为现有 user 表补唯一索引
 -- ALTER TABLE user ADD UNIQUE KEY uk_user_username (username);

@@ -2,6 +2,7 @@ package com.mars.post.domain.post;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.mars.common.Result;
 import com.mars.post.domain.post.PostDTO;
 import com.mars.post.domain.post.Post;
@@ -14,6 +15,7 @@ import com.mars.post.domain.post.PostLikeMapper;
 import com.mars.post.domain.post.PostMapper;
 import com.mars.post.domain.post.PostService;
 import com.mars.post.infrastructure.file.S3Service;
+import com.mars.post.domain.notification.NotificationHelper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.bind.annotation.*;
@@ -26,7 +28,7 @@ import java.util.*;
 import java.util.stream.Collectors;
 
 @RestController
-@RequestMapping("/post")
+@RequestMapping("/posts")
 public class PostController {
 
     @Autowired private PostService postService;
@@ -35,6 +37,7 @@ public class PostController {
     @Autowired private PostLikeMapper postLikeMapper;
     @Autowired private PostImageMapper postImageMapper;
     @Autowired private S3Service s3Service;
+    @Autowired private NotificationHelper notificationHelper;
 
     @Value("${file.local-path}")
     private String localPath;
@@ -43,7 +46,7 @@ public class PostController {
      * 发布帖子
      * 修改说明：完全移�?JWT 解析，直接使用网关传过来�?ID �?用户�?
      */
-    @PostMapping("/add")
+    @PostMapping("")
     public Result<String> add(@RequestBody PostDTO postDTO,
                               @RequestHeader("X-User-Id") String userIdStr,
                               @RequestHeader(value = "X-User-Name", required = false) String encodedUsername) {
@@ -81,7 +84,7 @@ public class PostController {
                 }
             }
 
-            return Result.success("发布成功");
+            return Result.successMessage("发布成功");
         } catch (Exception e) {
             e.printStackTrace();
             return Result.fail("发布失败：" + e.getMessage());
@@ -91,21 +94,27 @@ public class PostController {
     /**
      * 首页列表
      */
-    @GetMapping("/list")
-    public Result<List<Post>> list(@RequestHeader(value = "X-User-Id", required = false) String userIdStr) {
-        List<Post> postList = postMapper.selectList(new QueryWrapper<Post>().orderByDesc("create_time"));
-        return Result.success(attachPostExtras(postList, userIdStr));
+    @GetMapping("")
+    public Result<List<Post>> list(@RequestHeader(value = "X-User-Id", required = false) String userIdStr,
+                                   @RequestParam(value = "page", defaultValue = "1") int page,
+                                   @RequestParam(value = "size", defaultValue = "20") int size) {
+        Page<Post> pageParam = new Page<>(page, size);
+        Page<Post> result = postMapper.selectPage(pageParam, new QueryWrapper<Post>().orderByDesc("create_time"));
+        return Result.success(attachPostExtras(result.getRecords(), userIdStr));
     }
 
     /**
      * 当前用户的帖子列�?     */
     @GetMapping("/mine")
-    public Result<List<Post>> mine(@RequestHeader("X-User-Id") String userIdStr) {
+    public Result<List<Post>> mine(@RequestHeader("X-User-Id") String userIdStr,
+                                   @RequestParam(value = "page", defaultValue = "1") int page,
+                                   @RequestParam(value = "size", defaultValue = "20") int size) {
         Long userId = Long.parseLong(userIdStr);
-        List<Post> postList = postMapper.selectList(new QueryWrapper<Post>()
+        Page<Post> pageParam = new Page<>(page, size);
+        Page<Post> result = postMapper.selectPage(pageParam, new QueryWrapper<Post>()
                 .eq("user_id", userId)
                 .orderByDesc("create_time"));
-        return Result.success(attachPostExtras(postList, userIdStr));
+        return Result.success(attachPostExtras(result.getRecords(), userIdStr));
     }
 
     private List<Post> attachPostExtras(List<Post> postList, String userIdStr) {
@@ -143,7 +152,7 @@ public class PostController {
     /**
      * 帖子详情
      */
-    @GetMapping("/detail/{id}")
+    @GetMapping("/{id}")
     public Result<Map<String, Object>> getDetail(@PathVariable("id") Long id,
                                                  @RequestHeader(value = "X-User-Id", required = false) String userIdStr) {
         Post post = postMapper.selectById(id);
@@ -183,7 +192,7 @@ public class PostController {
     /**
      * 更新帖子
      */
-    @PostMapping("/update/{id}")
+    @PutMapping("/{id}")
     public Result<String> update(@PathVariable("id") Long id,
                                  @RequestBody PostDTO postDTO,
                                  @RequestHeader("X-User-Id") String userIdStr) {
@@ -193,7 +202,7 @@ public class PostController {
             if (!updated) {
                 return Result.fail("帖子不存在或无权限修改");
             }
-            return Result.success("更新成功");
+            return Result.successMessage("更新成功");
         } catch (Exception e) {
             e.printStackTrace();
             return Result.fail("更新失败：" + e.getMessage());
@@ -203,7 +212,7 @@ public class PostController {
     /**
      * 删除帖子
      */
-    @DeleteMapping("/delete/{id}")
+    @DeleteMapping("/{id}")
     public Result<String> delete(@PathVariable("id") Long id,
                                  @RequestHeader("X-User-Id") String userIdStr) {
         try {
@@ -212,7 +221,7 @@ public class PostController {
             if (!deleted) {
                 return Result.fail("帖子不存在或无权限删除");
             }
-            return Result.success("删除成功");
+            return Result.successMessage("删除成功");
         } catch (Exception e) {
             e.printStackTrace();
             return Result.fail("删除失败：" + e.getMessage());
@@ -222,36 +231,30 @@ public class PostController {
     /**
      * 点赞接口
      */
-    @PostMapping("/like/{postId}")
-    public Result like(@PathVariable("postId") Long postId, @RequestHeader(value = "X-User-Id", required = false) String userIdStr) {
+    @PostMapping("/{postId}/like")
+    public Result like(@PathVariable("postId") Long postId,
+                       @RequestHeader(value = "X-User-Id", required = false) String userIdStr,
+                       @RequestHeader(value = "X-User-Name", required = false) String encodedUsername) {
         if (userIdStr == null) return Result.fail("请先登录");
         Long userId = Long.parseLong(userIdStr);
 
-        PostLike existingLike = postLikeMapper.selectOne(new LambdaQueryWrapper<PostLike>()
-                .eq(PostLike::getPostId, postId)
-                .eq(PostLike::getUserId, userId));
-
-        Post post = postMapper.selectById(postId);
-        if (post == null) return Result.fail("帖子不存在");
-        int currentCount = post.getLikeCount() == null ? 0 : post.getLikeCount();
-
-        if (existingLike != null) {
-            postLikeMapper.deleteById(existingLike.getId());
-            if (currentCount > 0) {
-                post.setLikeCount(currentCount - 1);
-                postMapper.updateById(post);
-            }
-            return Result.success("取消点赞");
-        } else {
-            PostLike like = new PostLike();
-            like.setPostId(postId);
-            like.setUserId(userId);
-            like.setCreateTime(LocalDateTime.now());
-            postLikeMapper.insert(like);
-            post.setLikeCount(currentCount + 1);
-            postMapper.updateById(post);
-            return Result.success("点赞成功");
+        String username = "匿名用户";
+        if (encodedUsername != null) {
+            try {
+                username = URLDecoder.decode(encodedUsername, StandardCharsets.UTF_8.name());
+            } catch (Exception ignored) {}
         }
+
+        String result = postService.toggleLike(postId, userId, username);
+        return "liked".equals(result)
+                ? Result.successMessage("点赞成功")
+                : Result.successMessage("取消点赞");
+    }
+
+    @GetMapping("/count/{userId}")
+    public Result<Long> getPostCount(@PathVariable("userId") Long userId) {
+        Long count = postMapper.selectCount(new LambdaQueryWrapper<Post>().eq(Post::getUserId, userId));
+        return Result.success(count == null ? 0 : count);
     }
 
     /**

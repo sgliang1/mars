@@ -10,7 +10,6 @@ import org.springframework.web.socket.server.standard.ServerEndpointExporter;
 public class WebSocketConfig {
 
     public WebSocketConfig(ApplicationContext context) {
-        // å°?context æ³¨å…¥ç»?ChatEndpoint
         ChatEndpoint.setApplicationContext(context);
     }
 
