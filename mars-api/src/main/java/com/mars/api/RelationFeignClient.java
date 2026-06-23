@@ -10,7 +10,7 @@ import org.springframework.web.bind.annotation.RequestParam;
  * mars-relation → mars-user 的 Feign 客户端
  * 用于社交关系变更时更新 user_profile 中的粉丝/关注计数
  */
-@FeignClient(name = "mars-user", fallback = RelationFeignClientFallback.class)
+@FeignClient(name = "mars-user", contextId = "relationFeignClient", fallback = RelationFeignClientFallback.class)
 public interface RelationFeignClient {
 
     @PostMapping("/internal/user-profile/follower-count")

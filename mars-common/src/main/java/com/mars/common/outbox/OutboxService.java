@@ -2,6 +2,7 @@ package com.mars.common.outbox;
 
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -16,9 +17,10 @@ import java.time.LocalDateTime;
  */
 @Slf4j
 @Service
+@ConditionalOnClass(com.baomidou.mybatisplus.core.mapper.BaseMapper.class)
 public class OutboxService {
 
-    @Autowired
+    @Autowired(required = false)
     private OutboxMessageMapper outboxMapper;
 
     /**
@@ -32,6 +34,10 @@ public class OutboxService {
      */
     @Transactional
     public void save(String topic, String tag, String payload, String bizKey) {
+        if (outboxMapper == null) {
+            log.warn("OutboxMessageMapper 未注册，跳过发件箱写入: bizKey={}", bizKey);
+            return;
+        }
         OutboxMessage msg = new OutboxMessage();
         msg.setTopic(topic);
         msg.setTag(tag);

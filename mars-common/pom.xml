@@ -121,15 +121,30 @@
             <version>7.14.0</version>
         </dependency>
 
-        <!-- OpenTelemetry 分布式追踪 -->
+        <!-- OpenTelemetry 分布式追踪 (版本由 parent BOM 管理) -->
+        <!-- 暂时注释掉 spring-boot-starter（与 Spring Boot 3.4 的 webmvc 模块有 incubator 类冲突），
+             先用 OTel SDK + OTLP exporter 手动配置 traceId，待 OTel 2.11+ 修复后重新启用 -->
+        <!--
         <dependency>
             <groupId>io.opentelemetry.instrumentation</groupId>
             <artifactId>opentelemetry-spring-boot-starter</artifactId>
-            <version>2.10.0</version>
+        </dependency>
+        -->
+        <dependency>
+            <groupId>io.opentelemetry</groupId>
+            <artifactId>opentelemetry-api</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.opentelemetry</groupId>
+            <artifactId>opentelemetry-sdk</artifactId>
         </dependency>
         <dependency>
             <groupId>io.opentelemetry</groupId>
             <artifactId>opentelemetry-exporter-otlp</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.opentelemetry</groupId>
+            <artifactId>opentelemetry-sdk-extension-autoconfigure</artifactId>
         </dependency>
     </dependencies>
 </project>

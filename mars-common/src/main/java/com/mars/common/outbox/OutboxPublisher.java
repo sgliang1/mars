@@ -6,6 +6,7 @@ import com.mars.common.trace.TraceContext;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.spring.core.RocketMQTemplate;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
@@ -25,6 +26,7 @@ import java.util.List;
  */
 @Slf4j
 @Component
+@ConditionalOnClass(com.baomidou.mybatisplus.core.mapper.BaseMapper.class)
 public class OutboxPublisher {
 
     private static final int BATCH_SIZE = 100;
@@ -34,7 +36,7 @@ public class OutboxPublisher {
     @Autowired(required = false)
     private RocketMQTemplate rocketMQTemplate;
 
-    @Autowired
+    @Autowired(required = false)
     private OutboxMessageMapper outboxMapper;
 
     @Autowired
@@ -45,6 +47,9 @@ public class OutboxPublisher {
 
     @Scheduled(fixedDelay = 2000)
     public void publish() {
+        if (outboxMapper == null) {
+            return;
+        }
         // 分布式锁：多实例部署时只有一个实例执行轮询
         String lockOwner = cacheService.tryLock(LOCK_KEY, LOCK_TTL);
         if (lockOwner == null) {
@@ -146,6 +151,9 @@ public class OutboxPublisher {
      */
     @Scheduled(cron = "0 0 3 * * ?")
     public void cleanup() {
+        if (outboxMapper == null) {
+            return;
+        }
         try {
             LocalDateTime cutoff = LocalDateTime.now().minusDays(7);
             int deleted = outboxMapper.delete(
