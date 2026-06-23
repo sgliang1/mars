@@ -36,4 +36,6 @@ public class UserProfile {
 
     // 主题偏好
     private String theme;           // dark / light
+    private String themePreset;     // 预置主题 id，如 "default"
+    private String themeAccent;     // 自定义主题色 hex，如 "ffff3333"
 }
