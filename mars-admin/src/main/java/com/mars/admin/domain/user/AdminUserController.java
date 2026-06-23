@@ -120,18 +120,44 @@ public class AdminUserController {
 
     @PutMapping("/{id}/status")
     @AdminAudit(action = "ban_user", targetType = "user", description = "修改用户状态")
-    @Operation(summary = "修改用户状态", description = "正常/封禁")
+    @Operation(summary = "修改用户状态", description = "正常/封禁，支持封禁天数")
     public Result<Void> updateStatus(@PathVariable("id") Long userId, @RequestBody Map<String, Object> body) {
         Integer status = (Integer) body.get("status");
         if (status == null) {
             return Result.fail("状态不能为空");
         }
-        int rows = jdbcTemplate.update(
-                "UPDATE user_profile SET status = ? WHERE user_id = ?", status, userId);
-        if (rows == 0) {
-            return Result.fail("用户不存在");
+
+        Number banDaysNum = (Number) body.get("banDays");
+        int banDays = banDaysNum != null ? banDaysNum.intValue() : 0;
+
+        if (status == 0) {
+            // 封禁：设置 ban_until，隐藏用户所有帖子
+            String banUntil = null;
+            if (banDays > 0) {
+                banUntil = java.time.LocalDateTime.now().plusDays(banDays)
+                        .format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
+            }
+            int rows = jdbcTemplate.update(
+                    "UPDATE user_profile SET status = 0, ban_until = ? WHERE user_id = ?",
+                    banUntil, userId);
+            if (rows == 0) {
+                return Result.fail("用户不存在");
+            }
+            // 隐藏该用户所有已发布帖子
+            jdbcTemplate.update(
+                    "UPDATE post SET display_status = 2 WHERE user_id = ? AND display_status = 1 AND deleted_at IS NULL",
+                    userId);
+            return Result.successMessage(banDays > 0 ? "用户已封禁" + banDays + "天" : "用户已永久封禁");
+        } else {
+            // 解封：清除 ban_until
+            int rows = jdbcTemplate.update(
+                    "UPDATE user_profile SET status = 1, ban_until = NULL WHERE user_id = ?",
+                    userId);
+            if (rows == 0) {
+                return Result.fail("用户不存在");
+            }
+            return Result.successMessage("用户已解封");
         }
-        return Result.successMessage("状态更新成功");
     }
 
     @DeleteMapping("/{id}")
