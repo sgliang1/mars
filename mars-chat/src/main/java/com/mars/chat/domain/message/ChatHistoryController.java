@@ -27,9 +27,6 @@ public class ChatHistoryController {
     private static final String PUBLIC_CHANNEL_BIZ_KEY = "public-lobby";
 
     @Autowired
-    private ChatMessageMapper chatMessageMapper;
-
-    @Autowired
     private ConversationMessageMapper conversationMessageMapper;
 
     @Autowired
@@ -45,34 +42,22 @@ public class ChatHistoryController {
                 .eq(Conversation::getBizKey, PUBLIC_CHANNEL_BIZ_KEY)
                 .last("limit 1"));
 
-        if (publicConv != null) {
-            List<ConversationMessage> convMessages = conversationMessageMapper.selectList(
-                    new LambdaQueryWrapper<ConversationMessage>()
-                            .eq(ConversationMessage::getConversationId, publicConv.getId())
-                            .orderByDesc(ConversationMessage::getCreatedAt)
-                            .orderByDesc(ConversationMessage::getId)
-                            .last("limit " + safeLimit));
-
-            if (!convMessages.isEmpty()) {
-                List<Map<String, Object>> result = new ArrayList<>();
-                for (ConversationMessage msg : convMessages) {
-                    result.add(toLegacyMap(msg));
-                }
-                Collections.reverse(result);
-                return Result.success(result);
-            }
+        if (publicConv == null) {
+            return Result.success(Collections.emptyList());
         }
 
-        List<ChatMessage> list = chatMessageMapper.selectList(
-                new LambdaQueryWrapper<ChatMessage>()
-                        .orderByDesc(ChatMessage::getCreateTime)
+        List<ConversationMessage> convMessages = conversationMessageMapper.selectList(
+                new LambdaQueryWrapper<ConversationMessage>()
+                        .eq(ConversationMessage::getConversationId, publicConv.getId())
+                        .orderByDesc(ConversationMessage::getCreatedAt)
+                        .orderByDesc(ConversationMessage::getId)
                         .last("limit " + safeLimit));
 
-        Collections.reverse(list);
         List<Map<String, Object>> result = new ArrayList<>();
-        for (ChatMessage msg : list) {
+        for (ConversationMessage msg : convMessages) {
             result.add(toLegacyMap(msg));
         }
+        Collections.reverse(result);
         return Result.success(result);
     }
 
@@ -84,17 +69,6 @@ public class ChatHistoryController {
         data.put("content", msg.getContent());
         data.put("createTime", msg.getCreatedAt() == null ? "" : msg.getCreatedAt().toString());
         data.put("type", msg.getMessageType() == null ? 0 : msg.getMessageType());
-        return data;
-    }
-
-    private Map<String, Object> toLegacyMap(ChatMessage msg) {
-        Map<String, Object> data = new LinkedHashMap<>();
-        data.put("id", msg.getId() == null ? "" : msg.getId().toString());
-        data.put("senderId", msg.getSenderId() == null ? "" : msg.getSenderId().toString());
-        data.put("senderName", msg.getSenderName());
-        data.put("content", msg.getContent());
-        data.put("createTime", msg.getCreateTime() == null ? "" : msg.getCreateTime().toString());
-        data.put("type", msg.getType() == null ? 0 : msg.getType());
         return data;
     }
 }

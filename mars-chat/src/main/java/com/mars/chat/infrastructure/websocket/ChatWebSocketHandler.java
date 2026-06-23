@@ -12,7 +12,6 @@ import com.mars.chat.domain.message.ChatMessage;
 import com.mars.chat.domain.message.ChatMessageMapper;
 import com.mars.chat.domain.message.ConversationMessage;
 import com.mars.chat.domain.message.ConversationMessageMapper;
-import com.mars.chat.domain.message.SensitiveFilter;
 import com.mars.chat.mq.ChatMessageProducer;
 import com.mars.common.Result;
 import com.mars.common.cache.CacheKeys;
@@ -73,9 +72,6 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
 
     @Autowired
     private ChatMessageMapper chatMessageMapper;
-
-    @Autowired
-    private SensitiveFilter sensitiveFilter;
 
     @Autowired
     private WebSocketSessionManager sessionManager;
@@ -210,7 +206,7 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
             String rawContent = (String) msgMap.get("content");
             if (rawContent == null || rawContent.trim().isEmpty()) return;
 
-            String cleanContent = sensitiveFilter.filter(rawContent);
+            String cleanContent = rawContent;
             String convIdStr = (String) msgMap.get("conversationId");
             String tempId = (String) msgMap.get("tempId");
 
@@ -341,30 +337,15 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
 
     private void handlePublicMessage(Long userId, String username, String content) {
         try {
-            ChatMessage chatMsg = new ChatMessage();
-            chatMsg.setSenderId(userId);
-            chatMsg.setSenderName(username);
-            chatMsg.setContent(content);
-            chatMsg.setCreateTime(LocalDateTime.now());
-            chatMsg.setType(0);
-            chatMessageMapper.insert(chatMsg);
-
-            // 通过 Redis Pub/Sub 跨实例广播
-            broadcastPublicViaRedis(chatMsg);
-            writeConversationMessage(userId, username, content);
-
-        } catch (Exception e) {
-            log.error("Public message error", e);
-        }
-    }
-
-    private void writeConversationMessage(Long userId, String username, String content) {
-        try {
+            // 统一写入 conversation_message（公共频道 = conversation with bizKey=public-lobby）
             Conversation publicConv = conversationMapper.selectOne(
                     new LambdaQueryWrapper<Conversation>()
                             .eq(Conversation::getBizKey, PUBLIC_CHANNEL_BIZ_KEY)
                             .last("limit 1"));
-            if (publicConv == null) return;
+            if (publicConv == null) {
+                log.warn("公共频道 conversation 不存在，bizKey={}", PUBLIC_CHANNEL_BIZ_KEY);
+                return;
+            }
 
             ConversationMessage cm = new ConversationMessage();
             cm.setConversationId(publicConv.getId());
@@ -375,9 +356,21 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
             cm.setDeliveryStatus("sent");
             cm.setCreatedAt(LocalDateTime.now());
             conversationMessageMapper.insert(cm);
+
+            // 通过 conversation 频道广播（与其他会话消息统一格式）
+            broadcastToConversationViaRedis(publicConv.getId(), cm);
+
         } catch (Exception e) {
-            log.warn("Failed to dual-write public message to conversation_message", e);
+            log.error("Public message error", e);
         }
+    }
+
+    /**
+     * @deprecated 已合并到 handlePublicMessage，不再需要双重写入
+     */
+    @Deprecated
+    private void writeConversationMessage(Long userId, String username, String content) {
+        // no-op, kept for reference
     }
 
     // ==================== Redis Pub/Sub 广播 ====================

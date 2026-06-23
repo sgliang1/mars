@@ -7,12 +7,16 @@ import com.mars.common.cache.CacheKeys;
 import com.mars.common.cache.CacheService;
 import com.mars.post.domain.post.Post;
 import com.mars.post.domain.post.PostMapper;
+import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
+import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.web.bind.annotation.*;
 
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.Collections;
 import java.util.HashMap;
@@ -34,7 +38,7 @@ public class CommentController {
     @Autowired private CommentMapper commentMapper;
     @Autowired private CommentLikeMapper commentLikeMapper;
     @Autowired private PostMapper postMapper;
-    @Autowired private JdbcTemplate jdbcTemplate;
+    @Autowired private NamedParameterJdbcTemplate namedParameterJdbcTemplate;
     @Autowired private CacheService cacheService;
 
     @DeleteMapping("/{id}")
@@ -52,7 +56,7 @@ public class CommentController {
 
     @PostMapping("")
     @Operation(summary = "发表评论")
-    public Result add(@RequestBody Comment comment,
+    public Result add(@Valid @RequestBody Comment comment,
                       @RequestHeader(value = "X-User-Id", required = false) String userIdStr,
                       @RequestHeader(value = "X-User-Name", required = false) String encodedUsername) {
         try {
@@ -119,9 +123,9 @@ public class CommentController {
                 .collect(Collectors.toSet());
         if (userIds.isEmpty()) return;
 
-        String inSql = userIds.stream().map(String::valueOf).collect(Collectors.joining(","));
-        List<Map<String, Object>> profiles = jdbcTemplate.queryForList(
-                "SELECT user_id, avatar_url FROM user_profile WHERE user_id IN (" + inSql + ")");
+        MapSqlParameterSource params = new MapSqlParameterSource("ids", userIds);
+        List<Map<String, Object>> profiles = namedParameterJdbcTemplate.queryForList(
+                "SELECT user_id, avatar_url FROM user_profile WHERE user_id IN (:ids)", params);
 
         Map<Long, String> avatarMap = new HashMap<>();
         for (Map<String, Object> row : profiles) {
@@ -140,7 +144,7 @@ public class CommentController {
     }
 
     /**
-     * 评论点赞/取消点赞
+     * 评论点赞/取消点赞（带幂等保护）
      */
     @PostMapping("/{commentId}/like")
     @Operation(summary = "评论点赞/取消点赞")
@@ -149,25 +153,35 @@ public class CommentController {
         try {
             Long userId = Long.parseLong(userIdStr);
 
-            CommentLike existing = commentLikeMapper.selectOne(new LambdaQueryWrapper<CommentLike>()
-                    .eq(CommentLike::getCommentId, commentId)
-                    .eq(CommentLike::getUserId, userId));
-
-            if (existing != null) {
-                // 取消点赞
-                commentLikeMapper.deleteById(existing.getId());
-                commentLikeMapper.decrementLikeCount(commentId);
-                return Result.successMessage("取消点赞");
-            } else {
-                // 点赞
-                CommentLike like = new CommentLike();
-                like.setCommentId(commentId);
-                like.setUserId(userId);
-                like.setCreateTime(LocalDateTime.now());
-                commentLikeMapper.insert(like);
-                commentLikeMapper.incrementLikeCount(commentId);
-                return Result.successMessage("点赞成功");
+            // 幂等锁：防止并发重复点赞
+            String lockKey = "lock:comment-like:" + userId + ":" + commentId;
+            Boolean locked = cacheService.tryLock(lockKey, Duration.ofSeconds(3));
+            if (locked == null || !locked) {
+                return Result.fail("操作过于频繁，请稍后再试");
             }
+            try {
+                CommentLike existing = commentLikeMapper.selectOne(new LambdaQueryWrapper<CommentLike>()
+                        .eq(CommentLike::getCommentId, commentId)
+                        .eq(CommentLike::getUserId, userId));
+
+                if (existing != null) {
+                    commentLikeMapper.deleteById(existing.getId());
+                    commentLikeMapper.decrementLikeCount(commentId);
+                    return Result.successMessage("取消点赞");
+                } else {
+                    CommentLike like = new CommentLike();
+                    like.setCommentId(commentId);
+                    like.setUserId(userId);
+                    like.setCreateTime(LocalDateTime.now());
+                    commentLikeMapper.insert(like);
+                    commentLikeMapper.incrementLikeCount(commentId);
+                    return Result.successMessage("点赞成功");
+                }
+            } finally {
+                cacheService.delete(lockKey);
+            }
+        } catch (IllegalStateException e) {
+            return Result.fail(e.getMessage());
         } catch (Exception e) {
             e.printStackTrace();
             return Result.fail("操作失败");

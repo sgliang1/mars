@@ -42,6 +42,8 @@ public class NotificationHelper {
                 post.getUserId(), "interaction", truncate(actorName, 128),
                 buildContentJson(actorId, postId, post.getTitle(), null),
                 "like", String.valueOf(postId));
+        msg.setActorId(actorId);
+        msg.setPostId(postId);
         notificationProducer.sendInteraction(msg);
     }
 
@@ -62,6 +64,8 @@ public class NotificationHelper {
                 post.getUserId(), "interaction", truncate(actorName, 128),
                 buildContentJson(actorId, postId, post.getTitle(), truncate(commentContent, 60)),
                 "comment", String.valueOf(postId));
+        msg.setActorId(actorId);
+        msg.setPostId(postId);
         notificationProducer.sendInteraction(msg);
     }
 
@@ -80,6 +84,8 @@ public class NotificationHelper {
                 mentionedUserId, "interaction", truncate(actorName, 128),
                 buildContentJson(actorId, postId, null, null),
                 sourceType, sourceId);
+        msg.setActorId(actorId);
+        msg.setPostId(postId);
         notificationProducer.sendInteraction(msg);
     }
 
@@ -99,6 +105,7 @@ public class NotificationHelper {
         n.setContent("{\"actorId\":\"" + followerId + "\"}");
         n.setSourceType("follow");
         n.setSourceId(null);
+        n.setActorId(followerId);
         n.setReadStatus(0);
         n.setCreatedAt(java.time.LocalDateTime.now());
         notificationMapper.insert(n);

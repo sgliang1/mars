@@ -5,6 +5,7 @@ import com.mars.user.domain.dashboard.DashboardService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.web.bind.annotation.*;
@@ -51,7 +52,7 @@ public class UserController {
     @PutMapping("/user")
     @Operation(summary = "更新用户信息")
     public Result update(@RequestHeader("X-User-Id") String userIdStr,
-                         @RequestBody UpdateUserRequest request) {
+                         @Valid @RequestBody UpdateUserRequest request) {
         Long userId = Long.parseLong(userIdStr);
         return userService.update(userId, request);
     }
@@ -66,7 +67,7 @@ public class UserController {
     @PutMapping("/user/profile")
     @Operation(summary = "更新个人资料")
     public Result updateProfile(@RequestHeader("X-User-Id") String userIdStr,
-                                @RequestBody UpdateProfileRequest request) {
+                                @Valid @RequestBody UpdateProfileRequest request) {
         request.setUserId(Long.parseLong(userIdStr));
         return userService.updateProfile(request);
     }

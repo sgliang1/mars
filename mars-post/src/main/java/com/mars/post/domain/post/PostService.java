@@ -19,6 +19,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Duration;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
@@ -148,45 +149,51 @@ public class PostService {
     }
 
     /**
-     * ??/???? ? ?? + ?????
-     * @return "liked" ???????"unliked" ??????
+     * 点赞/取消点赞 — 带幂等保护（Redis 分布式锁）
+     * @return "liked" 表示点赞，"unliked" 表示取消
      */
     @Transactional
     public String toggleLike(Long postId, Long userId, String username) {
-        Post post = postMapper.selectById(postId);
-        if (post == null) {
-            throw new IllegalArgumentException("?????");
+        // 幂等锁：同一用户对同一帖子的操作串行化
+        String lockKey = "lock:like:" + userId + ":" + postId;
+        Boolean locked = cacheService.tryLock(lockKey, Duration.ofSeconds(3));
+        if (locked == null || !locked) {
+            throw new IllegalStateException("操作过于频繁，请稍后再试");
         }
+        try {
+            Post post = postMapper.selectById(postId);
+            if (post == null) {
+                throw new IllegalArgumentException("帖子不存在");
+            }
 
-        PostLike existingLike = postLikeMapper.selectOne(new LambdaQueryWrapper<PostLike>()
-                .eq(PostLike::getPostId, postId)
-                .eq(PostLike::getUserId, userId));
+            PostLike existingLike = postLikeMapper.selectOne(new LambdaQueryWrapper<PostLike>()
+                    .eq(PostLike::getPostId, postId)
+                    .eq(PostLike::getUserId, userId));
 
-        if (existingLike != null) {
-            postLikeMapper.deleteById(existingLike.getId());
-            postMapper.decrementLikeCount(postId);
-            // 清除帖子详情缓存
-            cacheService.delete(CacheKeys.key(CacheKeys.POST_DETAIL, postId));
-            // 清除 Feed 缓存
-            feedService.evictHotFeedCache();
-            return "unliked";
-        } else {
-            PostLike like = new PostLike();
-            like.setPostId(postId);
-            like.setUserId(userId);
-            like.setCreateTime(java.time.LocalDateTime.now());
-            postLikeMapper.insert(like);
-            postMapper.incrementLikeCount(postId);
+            if (existingLike != null) {
+                postLikeMapper.deleteById(existingLike.getId());
+                postMapper.decrementLikeCount(postId);
+                cacheService.delete(CacheKeys.key(CacheKeys.POST_DETAIL, postId));
+                feedService.evictHotFeedCache();
+                return "unliked";
+            } else {
+                PostLike like = new PostLike();
+                like.setPostId(postId);
+                like.setUserId(userId);
+                like.setCreateTime(java.time.LocalDateTime.now());
+                postLikeMapper.insert(like);
+                postMapper.incrementLikeCount(postId);
 
-            // 清除帖子详情缓存
-            cacheService.delete(CacheKeys.key(CacheKeys.POST_DETAIL, postId));
-            // 清除 Feed 缓存
-            feedService.evictHotFeedCache();
-            try {
-                notificationHelper.notifyLike(userId, username != null ? username : "????", postId);
-            } catch (Exception ignored) {}
+                cacheService.delete(CacheKeys.key(CacheKeys.POST_DETAIL, postId));
+                feedService.evictHotFeedCache();
+                try {
+                    notificationHelper.notifyLike(userId, username != null ? username : "匿名", postId);
+                } catch (Exception ignored) {}
 
-            return "liked";
+                return "liked";
+            }
+        } finally {
+            cacheService.delete(lockKey);
         }
     }
 

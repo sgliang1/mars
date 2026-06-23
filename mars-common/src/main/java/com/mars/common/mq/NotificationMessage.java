@@ -23,6 +23,10 @@ public class NotificationMessage implements Serializable {
     private String sourceType;
     /** 来源 ID（帖子 ID 等） */
     private String sourceId;
+    /** 操作者用户ID */
+    private Long actorId;
+    /** 关联帖子ID */
+    private Long postId;
     /** 创建时间 */
     private LocalDateTime createdAt;
 
@@ -56,6 +60,12 @@ public class NotificationMessage implements Serializable {
 
     public String getSourceId() { return sourceId; }
     public void setSourceId(String sourceId) { this.sourceId = sourceId; }
+
+    public Long getActorId() { return actorId; }
+    public void setActorId(Long actorId) { this.actorId = actorId; }
+
+    public Long getPostId() { return postId; }
+    public void setPostId(Long postId) { this.postId = postId; }
 
     public LocalDateTime getCreatedAt() { return createdAt; }
     public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }

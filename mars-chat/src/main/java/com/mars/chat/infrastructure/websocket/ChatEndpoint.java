@@ -12,7 +12,6 @@ import com.mars.chat.domain.message.ChatMessage;
 import com.mars.chat.domain.message.ChatMessageMapper;
 import com.mars.chat.domain.message.ConversationMessage;
 import com.mars.chat.domain.message.ConversationMessageMapper;
-import com.mars.chat.domain.message.SensitiveFilter;
 import com.mars.common.Result;
 import com.mars.common.util.JwtUtil;
 import io.jsonwebtoken.Claims;
@@ -130,8 +129,7 @@ public class ChatEndpoint {
 
             if (rawContent == null || rawContent.trim().isEmpty()) return;
 
-            SensitiveFilter filter = applicationContext.getBean(SensitiveFilter.class);
-            String cleanContent = filter.filter(rawContent);
+            String cleanContent = rawContent;
 
             String convIdStr = msgMap.get("conversationId");
             if (convIdStr != null && !convIdStr.isBlank()) {

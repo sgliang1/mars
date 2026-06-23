@@ -27,6 +27,9 @@ public class AuthService {
         boolean isMatch = false;
         if (user.getPassword().length() < 50 && user.getPassword().equals(request.getPassword())) {
             isMatch = true;
+            // 明文密码登录成功后自动升级为 BCrypt
+            user.setPassword(passwordEncoder.encode(request.getPassword()));
+            userMapper.updateById(user);
         } else if (passwordEncoder.matches(request.getPassword(), user.getPassword())) {
             isMatch = true;
         }
@@ -57,5 +60,27 @@ public class AuthService {
         user.setPassword(passwordEncoder.encode(user.getPassword()));
         userMapper.insert(user);
         return Result.successMessage("注册成功");
+    }
+
+    public Result changePassword(Long userId, String oldPassword, String newPassword) {
+        User user = userMapper.selectById(userId);
+        if (user == null) {
+            return Result.fail("用户不存在");
+        }
+
+        // 验证旧密码（兼容明文和 BCrypt）
+        boolean oldMatch = false;
+        if (user.getPassword().length() < 50) {
+            oldMatch = user.getPassword().equals(oldPassword);
+        } else {
+            oldMatch = passwordEncoder.matches(oldPassword, user.getPassword());
+        }
+        if (!oldMatch) {
+            return Result.fail("旧密码错误");
+        }
+
+        user.setPassword(passwordEncoder.encode(newPassword));
+        userMapper.updateById(user);
+        return Result.successMessage("密码修改成功");
     }
 }

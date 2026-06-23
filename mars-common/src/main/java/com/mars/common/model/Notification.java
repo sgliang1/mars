@@ -17,6 +17,12 @@ public class Notification {
     private String content;
     private String sourceType;
     private String sourceId;
+
+    /** 操作者用户ID（点赞/评论/关注的人） */
+    private Long actorId;
+    /** 关联帖子ID */
+    private Long postId;
+
     private Integer readStatus;
     private LocalDateTime createdAt;
     private LocalDateTime readAt;

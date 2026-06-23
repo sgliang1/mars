@@ -8,9 +8,11 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.core.ScanOptions;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
+import java.time.Duration;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -43,18 +45,28 @@ public class CountSyncScheduler {
      */
     @Scheduled(fixedRate = 300000) // 5 分钟
     public void syncCounters() {
-        int likeCount = syncLikeCounters();
-        int commentCount = syncCommentCounters();
-        if (likeCount > 0 || commentCount > 0) {
-            log.info("计数器同步完成: 点赞同步 {} 个帖子, 评论同步 {} 个帖子", likeCount, commentCount);
+        // 分布式锁，防止多实例重复执行
+        Boolean locked = cacheService.tryLock("lock:count-sync-task", Duration.ofSeconds(280));
+        if (locked == null || !locked) {
+            log.debug("计数器同步任务未获取到锁，跳过本次执行");
+            return;
+        }
+        try {
+            int likeCount = syncLikeCounters();
+            int commentCount = syncCommentCounters();
+            if (likeCount > 0 || commentCount > 0) {
+                log.info("计数器同步完成: 点赞同步 {} 个帖子, 评论同步 {} 个帖子", likeCount, commentCount);
+            }
+        } finally {
+            cacheService.delete("lock:count-sync-task");
         }
     }
 
     private int syncLikeCounters() {
         int synced = 0;
         try {
-            Set<String> keys = cacheService.getRedisTemplate().keys(CacheKeys.COUNT_LIKES + "*");
-            if (keys == null || keys.isEmpty()) return 0;
+            Set<String> keys = scanKeys(CacheKeys.COUNT_LIKES + "*");
+            if (keys.isEmpty()) return 0;
 
             for (String key : keys) {
                 try {
@@ -83,8 +95,8 @@ public class CountSyncScheduler {
     private int syncCommentCounters() {
         int synced = 0;
         try {
-            Set<String> keys = cacheService.getRedisTemplate().keys(CacheKeys.COUNT_COMMENTS + "*");
-            if (keys == null || keys.isEmpty()) return 0;
+            Set<String> keys = scanKeys(CacheKeys.COUNT_COMMENTS + "*");
+            if (keys.isEmpty()) return 0;
 
             for (String key : keys) {
                 try {
@@ -106,5 +118,26 @@ public class CountSyncScheduler {
             log.error("扫描评论计数器失败: {}", e.getMessage());
         }
         return synced;
+    }
+
+    /**
+     * 使用 SCAN 替代 KEYS，避免阻塞 Redis
+     */
+    private Set<String> scanKeys(String pattern) {
+        Set<String> keys = new java.util.HashSet<>();
+        try {
+            cacheService.getRedisTemplate().execute((org.springframework.data.redis.core.RedisCallback<Void>) connection -> {
+                ScanOptions options = ScanOptions.scanOptions().match(pattern).count(100).build();
+                try (var cursor = connection.scan(options)) {
+                    while (cursor.hasNext()) {
+                        keys.add(new String(cursor.next()));
+                    }
+                }
+                return null;
+            });
+        } catch (Exception e) {
+            log.error("SCAN 操作失败: pattern={}, error={}", pattern, e.getMessage());
+        }
+        return keys;
     }
 }

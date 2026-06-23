@@ -10,6 +10,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
@@ -70,59 +71,77 @@ public class RelationService {
         if (followerId.equals(followedId)) {
             throw new IllegalArgumentException("不能关注自己");
         }
-        if (isFollowing(followerId, followedId)) {
-            throw new IllegalArgumentException("已关注该用户");
+        // 幂等锁：防止并发重复关注
+        String lockKey = "lock:follow:" + followerId + ":" + followedId;
+        Boolean locked = cacheService.tryLock(lockKey, Duration.ofSeconds(3));
+        if (locked == null || !locked) {
+            throw new IllegalStateException("操作过于频繁，请稍后再试");
         }
-
-        UserRelation relation = new UserRelation();
-        relation.setFollowerId(followerId);
-        relation.setFollowedId(followedId);
-        relation.setCreatedAt(LocalDateTime.now());
-        relation.setSourceType(sourceType);
-        relation.setSourceId(sourceId);
-        userRelationMapper.insert(relation);
-
-        userProfileMapper.updateFollowingCount(followerId, 1);
-        userProfileMapper.updateFollowerCount(followedId, 1);
-
-        // 清除关系缓存
-        cacheService.delete(CacheKeys.relationKey(CacheKeys.RELATION_CHECK, followerId, followedId));
-        cacheService.delete(CacheKeys.relationKey(CacheKeys.RELATION_CHECK, followedId, followerId));
-
         try {
-            Notification n = new Notification();
-            n.setUserId(followedId);
-            n.setCategory("interaction");
-            n.setTitle(followerName != null ? followerName : "匿名用户");
-            n.setContent("{\"actorId\":\"" + followerId + "\"}");
-            n.setSourceType("follow");
-            n.setSourceId(null);
-            n.setReadStatus(0);
-            n.setCreatedAt(LocalDateTime.now());
-            notificationMapper.insert(n);
-        } catch (Exception ignored) {}
+            if (isFollowing(followerId, followedId)) {
+                throw new IllegalArgumentException("已关注该用户");
+            }
 
-        relationEventService.recordEvent(followerId, followedId, "follow");
+            UserRelation relation = new UserRelation();
+            relation.setFollowerId(followerId);
+            relation.setFollowedId(followedId);
+            relation.setCreatedAt(LocalDateTime.now());
+            relation.setSourceType(sourceType);
+            relation.setSourceId(sourceId);
+            userRelationMapper.insert(relation);
+
+            userProfileMapper.updateFollowingCount(followerId, 1);
+            userProfileMapper.updateFollowerCount(followedId, 1);
+
+            cacheService.delete(CacheKeys.relationKey(CacheKeys.RELATION_CHECK, followerId, followedId));
+            cacheService.delete(CacheKeys.relationKey(CacheKeys.RELATION_CHECK, followedId, followerId));
+
+            try {
+                Notification n = new Notification();
+                n.setUserId(followedId);
+                n.setCategory("interaction");
+                n.setTitle(followerName != null ? followerName : "匿名用户");
+                n.setContent("{\"actorId\":\"" + followerId + "\"}");
+                n.setSourceType("follow");
+                n.setSourceId(null);
+                n.setReadStatus(0);
+                n.setCreatedAt(LocalDateTime.now());
+                notificationMapper.insert(n);
+            } catch (Exception ignored) {}
+
+            relationEventService.recordEvent(followerId, followedId, "follow");
+        } finally {
+            cacheService.delete(lockKey);
+        }
     }
 
     @Transactional
     public void unfollow(Long followerId, Long followedId) {
-        LambdaQueryWrapper<UserRelation> wrapper = new LambdaQueryWrapper<UserRelation>()
-                .eq(UserRelation::getFollowerId, followerId)
-                .eq(UserRelation::getFollowedId, followedId);
-        int deleted = userRelationMapper.delete(wrapper);
-        if (deleted == 0) {
-            throw new IllegalArgumentException("未关注该用户");
+        // 幂等锁：防止并发重复取关
+        String lockKey = "lock:follow:" + followerId + ":" + followedId;
+        Boolean locked = cacheService.tryLock(lockKey, Duration.ofSeconds(3));
+        if (locked == null || !locked) {
+            throw new IllegalStateException("操作过于频繁，请稍后再试");
         }
+        try {
+            LambdaQueryWrapper<UserRelation> wrapper = new LambdaQueryWrapper<UserRelation>()
+                    .eq(UserRelation::getFollowerId, followerId)
+                    .eq(UserRelation::getFollowedId, followedId);
+            int deleted = userRelationMapper.delete(wrapper);
+            if (deleted == 0) {
+                throw new IllegalArgumentException("未关注该用户");
+            }
 
-        userProfileMapper.updateFollowingCount(followerId, -1);
-        userProfileMapper.updateFollowerCount(followedId, -1);
+            userProfileMapper.updateFollowingCount(followerId, -1);
+            userProfileMapper.updateFollowerCount(followedId, -1);
 
-        // 清除关系缓存
-        cacheService.delete(CacheKeys.relationKey(CacheKeys.RELATION_CHECK, followerId, followedId));
-        cacheService.delete(CacheKeys.relationKey(CacheKeys.RELATION_CHECK, followedId, followerId));
+            cacheService.delete(CacheKeys.relationKey(CacheKeys.RELATION_CHECK, followerId, followedId));
+            cacheService.delete(CacheKeys.relationKey(CacheKeys.RELATION_CHECK, followedId, followerId));
 
-        relationEventService.recordEvent(followerId, followedId, "unfollow");
+            relationEventService.recordEvent(followerId, followedId, "unfollow");
+        } finally {
+            cacheService.delete(lockKey);
+        }
     }
 
     // ==================== 拉黑 ====================

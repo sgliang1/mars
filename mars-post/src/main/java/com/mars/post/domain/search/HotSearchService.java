@@ -10,6 +10,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.core.ZSetOperations;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
+import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.web.bind.annotation.*;
@@ -107,14 +109,7 @@ class HotSearchService {
 class HotSearchController {
 
     @Autowired private HotSearchService hotSearchService;
-    @Autowired private JdbcTemplate jdbcTemplate;
-
-    @GetMapping("/hot")
-    @Operation(summary = "热搜词列表")
-    public Result<Set<Object>> hotKeywords(
-            @RequestParam(value = "limit", defaultValue = "20") int limit) {
-        return Result.success(hotSearchService.getHotSearchKeywords(limit));
-    }
+    @Autowired private NamedParameterJdbcTemplate namedParameterJdbcTemplate;
 
     @GetMapping("/hot-posts")
     @Operation(summary = "热帖榜单")
@@ -123,11 +118,14 @@ class HotSearchController {
         Set<Object> ids = hotSearchService.getHotPosts(limit);
         if (ids.isEmpty()) return Result.success(Collections.emptyList());
 
-        String idStr = ids.stream().map(String::valueOf).collect(Collectors.joining(","));
-        List<Map<String, Object>> posts = jdbcTemplate.queryForList(
+        List<Long> idList = ids.stream()
+                .map(id -> ((Number) id).longValue())
+                .collect(Collectors.toList());
+        MapSqlParameterSource params = new MapSqlParameterSource("ids", idList);
+        List<Map<String, Object>> posts = namedParameterJdbcTemplate.queryForList(
                 "SELECT id, user_id, username, title, summary, like_count, comment_count, share_count, create_time " +
-                "FROM post WHERE id IN (" + idStr + ") " +
-                "ORDER BY (like_count * 1 + comment_count * 2 + share_count * 3) DESC");
+                "FROM post WHERE id IN (:ids) " +
+                "ORDER BY (like_count * 1 + comment_count * 2 + share_count * 3) DESC", params);
         return Result.success(posts);
     }
 }

@@ -20,6 +20,7 @@ import com.mars.post.infrastructure.file.S3Service;
 import com.mars.post.domain.notification.NotificationHelper;
 import com.mars.common.cache.CacheKeys;
 import com.mars.common.cache.CacheService;
+import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.bind.annotation.*;
@@ -63,7 +64,7 @@ public class PostController {
      */
     @PostMapping("")
     @Operation(summary = "发布帖子")
-    public Result<String> add(@RequestBody PostDTO postDTO,
+    public Result<String> add(@Valid @RequestBody PostDTO postDTO,
                               @RequestHeader("X-User-Id") String userIdStr,
                               @RequestHeader(value = "X-User-Name", required = false) String encodedUsername) {
         try {
@@ -373,7 +374,7 @@ public class PostController {
     @PutMapping("/{id}")
     @Operation(summary = "更新帖子")
     public Result<String> update(@Parameter(description = "帖子ID") @PathVariable("id") Long id,
-                                 @RequestBody PostDTO postDTO,
+                                 @Valid @RequestBody PostDTO postDTO,
                                  @RequestHeader("X-User-Id") String userIdStr) {
         try {
             Long userId = Long.parseLong(userIdStr);

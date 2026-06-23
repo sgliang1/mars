@@ -47,6 +47,8 @@ public class NotificationConsumer implements RocketMQListener<NotificationMessag
             n.setContent(msg.getContent());
             n.setSourceType(msg.getSourceType());
             n.setSourceId(msg.getSourceId());
+            n.setActorId(msg.getActorId());
+            n.setPostId(msg.getPostId());
             n.setReadStatus(0);
             n.setCreatedAt(msg.getCreatedAt() != null ? msg.getCreatedAt() : java.time.LocalDateTime.now());
             notificationMapper.insert(n);
