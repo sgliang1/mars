@@ -1,0 +1,21 @@
+version: "3.8"
+
+# Mars 论坛开发环境基础设施
+# 使用方法: docker-compose up -d
+
+services:
+  # ========================
+  # Jaeger 分布式追踪
+  # ========================
+  # UI: http://localhost:16686
+  # OTLP HTTP 接收端: http://localhost:4318
+  jaeger:
+    image: jaegertracing/all-in-one:latest
+    container_name: mars-jaeger
+    ports:
+      - "16686:16686"   # Jaeger UI
+      - "4318:4318"     # OTLP HTTP (OpenTelemetry Exporter)
+      - "4317:4317"     # OTLP gRPC (备用)
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+    restart: unless-stopped

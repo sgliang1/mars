@@ -1,5 +1,6 @@
 package com.mars.interaction.mq;
 
+import com.mars.common.cache.CacheService;
 import com.mars.common.mq.MqTopics;
 import com.mars.common.mq.NotificationMessage;
 import com.mars.common.push.NotificationAggregator;
@@ -13,9 +14,12 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
+import java.time.Duration;
+
 /**
  * 互动通知推送消费者
  * 与 NotificationConsumer (写 DB) 并行消费同一 Topic，各自独立消费组
+ * 支持幂等：同一推送消息只发送一次
  */
 @Component
 @RocketMQMessageListener(
@@ -26,6 +30,8 @@ import org.springframework.stereotype.Component;
 public class NotificationPushConsumer implements RocketMQListener<NotificationMessage> {
 
     private static final Logger log = LoggerFactory.getLogger(NotificationPushConsumer.class);
+    private static final String IDEMPOTENCY_PREFIX = "mars:push:processed:";
+    private static final Duration IDEMPOTENCY_TTL = Duration.ofHours(24);
 
     @Autowired
     private PushService pushService;
@@ -36,11 +42,25 @@ public class NotificationPushConsumer implements RocketMQListener<NotificationMe
     @Autowired
     private NotificationAggregator aggregator;
 
+    @Autowired
+    private CacheService cacheService;
+
     @Override
     public void onMessage(NotificationMessage msg) {
         try {
             Long userId = msg.getUserId();
             if (userId == null) return;
+
+            // 幂等检查
+            String idempotencyKey = IDEMPOTENCY_PREFIX
+                    + msg.getSourceType() + ":" + msg.getActorId()
+                    + ":" + msg.getUserId() + ":" + msg.getSourceId();
+            Boolean isNew = cacheService.getRedisTemplate().opsForValue()
+                    .setIfAbsent(idempotencyKey, "1", IDEMPOTENCY_TTL);
+            if (!Boolean.TRUE.equals(isNew)) {
+                log.debug("推送消息已处理，跳过: {}", idempotencyKey);
+                return;
+            }
 
             if (!preferenceHelper.shouldPushInteraction(userId)) {
                 return;

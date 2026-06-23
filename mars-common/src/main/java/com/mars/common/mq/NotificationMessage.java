@@ -27,6 +27,8 @@ public class NotificationMessage implements Serializable {
     private Long actorId;
     /** 关联帖子ID */
     private Long postId;
+    /** 业务幂等键，用于消费端去重 */
+    private String bizKey;
     /** 创建时间 */
     private LocalDateTime createdAt;
 
@@ -66,6 +68,9 @@ public class NotificationMessage implements Serializable {
 
     public Long getPostId() { return postId; }
     public void setPostId(Long postId) { this.postId = postId; }
+
+    public String getBizKey() { return bizKey; }
+    public void setBizKey(String bizKey) { this.bizKey = bizKey; }
 
     public LocalDateTime getCreatedAt() { return createdAt; }
     public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }

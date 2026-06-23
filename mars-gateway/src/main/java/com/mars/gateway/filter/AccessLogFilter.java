@@ -1,5 +1,6 @@
 package com.mars.gateway.filter;
 
+import io.opentelemetry.api.trace.Span;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.cloud.gateway.filter.GatewayFilterChain;
 import org.springframework.cloud.gateway.filter.GlobalFilter;
@@ -36,13 +37,16 @@ public class AccessLogFilter implements GlobalFilter, Ordered {
             int statusCode = exchange.getResponse().getStatusCode() != null
                     ? exchange.getResponse().getStatusCode().value() : 0;
 
-            log.info("ACCESS | {} {} | status={} | duration={}ms | userId={} | ip={}",
+            String traceId = Span.current().getSpanContext().getTraceId();
+
+            log.info("ACCESS | {} {} | status={} | duration={}ms | userId={} | ip={} | traceId={}",
                     method, path, statusCode, duration,
-                    userId != null ? userId : "-", clientIp);
+                    userId != null ? userId : "-", clientIp, traceId);
 
             // 慢请求告警
             if (duration > 3000) {
-                log.warn("SLOW_REQUEST | {} {} | duration={}ms | userId={}", method, path, duration, userId);
+                log.warn("SLOW_REQUEST | {} {} | duration={}ms | userId={} | traceId={}",
+                        method, path, duration, userId, traceId);
             }
         }));
     }

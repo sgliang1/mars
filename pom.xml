@@ -19,6 +19,7 @@
         <module>mars-admin</module>
         <module>mars-search</module>
         <module>mars-interaction</module>
+        <module>mars-relation</module>
     </modules>
 
     <properties>

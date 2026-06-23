@@ -2,8 +2,8 @@ package com.mars.chat.mq;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.mars.chat.infrastructure.websocket.WebSocketSessionManager;
+import com.mars.common.cache.CacheService;
 import com.mars.common.mq.MqTopics;
-import com.mars.common.push.NotificationAggregator;
 import com.mars.common.push.PushPayload;
 import com.mars.common.push.PushPreferenceHelper;
 import com.mars.common.push.PushService;
@@ -14,11 +14,13 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
+import java.time.Duration;
 import java.util.Map;
 
 /**
  * 离线消息消费者
  * 收到离线消息 → 检查在线状态 → 检查推送偏好 → 调用 PushService 推送
+ * 支持幂等：同一 receiverId+messageId 的消息只推送一次
  */
 @Component
 @RocketMQMessageListener(
@@ -30,6 +32,8 @@ public class OfflineMessageConsumer implements RocketMQListener<String> {
 
     private static final Logger log = LoggerFactory.getLogger(OfflineMessageConsumer.class);
     private static final ObjectMapper MAPPER = new ObjectMapper();
+    private static final String IDEMPOTENCY_PREFIX = "mars:chat:offline:pushed:";
+    private static final Duration IDEMPOTENCY_TTL = Duration.ofHours(1);
 
     @Autowired
     private PushService pushService;
@@ -40,15 +44,30 @@ public class OfflineMessageConsumer implements RocketMQListener<String> {
     @Autowired(required = false)
     private WebSocketSessionManager sessionManager;
 
+    @Autowired
+    private CacheService cacheService;
+
     @Override
     public void onMessage(String payload) {
         try {
             Map<String, Object> msg = MAPPER.readValue(payload, Map.class);
             Long receiverId = toLong(msg.get("receiverId"));
+            Long messageId = toLong(msg.get("messageId"));
             String senderName = (String) msg.getOrDefault("senderName", "某人");
             String preview = (String) msg.getOrDefault("preview", "");
 
             if (receiverId == null) return;
+
+            // 幂等检查
+            if (messageId != null) {
+                String idempotencyKey = IDEMPOTENCY_PREFIX + receiverId + ":" + messageId;
+                Boolean isNew = cacheService.getRedisTemplate().opsForValue()
+                        .setIfAbsent(idempotencyKey, "1", IDEMPOTENCY_TTL);
+                if (!Boolean.TRUE.equals(isNew)) {
+                    log.debug("离线推送已处理，跳过: receiverId={}, messageId={}", receiverId, messageId);
+                    return;
+                }
+            }
 
             // 1. 用户在线则跳过（WebSocket 会实时推送）
             if (sessionManager != null && sessionManager.isOnline(receiverId)) {

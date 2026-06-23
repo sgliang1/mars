@@ -28,4 +28,8 @@ public final class MqTopics {
     // ==================== 计数器回写 Topic ====================
     /** 计数器定期回写 DB（目前用定时任务，预留 Topic） */
     public static final String COUNT_SYNC = "MARS_COUNT_SYNC";
+
+    // ==================== 死信队列 ====================
+    /** 超过最大重试次数的失败消息 */
+    public static final String DEAD_LETTER = "MARS_DEAD_LETTER";
 }

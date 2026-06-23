@@ -11,7 +11,7 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 @EnableDiscoveryClient
 @EnableScheduling
 @ComponentScan(basePackages = {"com.mars.interaction", "com.mars.common"})
-@MapperScan(value = {"com.mars.interaction.domain", "com.mars.common.push"}, annotationClass = org.apache.ibatis.annotations.Mapper.class)
+@MapperScan(value = {"com.mars.interaction.domain", "com.mars.common.push", "com.mars.common.outbox"}, annotationClass = org.apache.ibatis.annotations.Mapper.class)
 public class InteractionApplication {
     public static void main(String[] args) {
         SpringApplication.run(InteractionApplication.class, args);
