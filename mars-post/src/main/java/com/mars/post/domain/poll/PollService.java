@@ -1,5 +1,6 @@
 package com.mars.post.domain.poll;
 
+import com.mars.common.util.SanitizeUtil;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
@@ -24,7 +25,7 @@ public class PollService {
                            LocalDateTime expireAt, List<String> options) {
         Poll poll = new Poll();
         poll.setPostId(postId);
-        poll.setQuestion(question);
+        poll.setQuestion(SanitizeUtil.stripHtml(question));
         poll.setIsMultiple(isMultiple ? 1 : 0);
         poll.setTotalVotes(0);
         poll.setExpireAt(expireAt);
@@ -35,7 +36,7 @@ public class PollService {
         for (int i = 0; i < options.size(); i++) {
             PollOption option = new PollOption();
             option.setPollId(poll.getId());
-            option.setOptionText(options.get(i));
+            option.setOptionText(SanitizeUtil.stripHtml(options.get(i)));
             option.setVoteCount(0);
             option.setSortOrder(i);
             pollOptionMapper.insert(option);

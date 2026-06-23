@@ -15,6 +15,7 @@ import com.mars.common.Result;
 import com.mars.common.cache.CacheKeys;
 import com.mars.common.cache.CacheService;
 import com.mars.common.util.JwtUtil;
+import com.mars.common.util.SanitizeUtil;
 import io.jsonwebtoken.Claims;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -201,7 +202,8 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
             String rawContent = (String) msgMap.get("content");
             if (rawContent == null || rawContent.trim().isEmpty()) return;
 
-            String cleanContent = rawContent;
+            // XSS 净化：去除聊天消息中的 HTML/脚本
+            String cleanContent = SanitizeUtil.stripHtml(rawContent);
             String convIdStr = (String) msgMap.get("conversationId");
             String tempId = (String) msgMap.get("tempId");
 

@@ -14,6 +14,7 @@ import com.mars.post.domain.post.PostMapper;
 import com.mars.post.domain.notification.NotificationHelper;
 import com.mars.common.cache.CacheKeys;
 import com.mars.common.cache.CacheService;
+import com.mars.common.util.SanitizeUtil;
 import com.mars.post.mq.SearchSyncProducer;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -37,17 +38,24 @@ public class PostService {
     @Autowired private PostEditHistoryMapper editHistoryMapper;
     @Autowired private FeedService feedService;
 
-    @Transactional // ??????????????????
+    @Transactional
     public void publish(Post post, String fullContent) {
-        post.setSummary(buildSummary(fullContent));
-        
-        // 2. ??????????ID
-        postMapper.insert(post); 
-        
-        // 3. ?? ID ??????
+        // XSS 净化：去除用户输入中的 HTML/脚本
+        post.setTitle(SanitizeUtil.stripHtml(post.getTitle()));
+        if (post.getLocationName() != null) {
+            post.setLocationName(SanitizeUtil.stripHtml(post.getLocationName()));
+        }
+        String safeContent = SanitizeUtil.stripHtml(fullContent);
+
+        post.setSummary(buildSummary(safeContent));
+
+        // 2. 先插入主表，拿到自增 ID
+        postMapper.insert(post);
+
+        // 3. 用 ID 插入内容表
         PostContent pc = new PostContent();
         pc.setPostId(post.getId());
-        pc.setContent(fullContent);
+        pc.setContent(safeContent);
         contentMapper.insert(pc);
 
         // 通知 ES 索引同步
@@ -76,7 +84,7 @@ public class PostService {
             editHistoryMapper.insert(history);
         }
 
-        String content = postDTO.getContent() == null ? "" : postDTO.getContent();
+        String content = postDTO.getContent() == null ? "" : SanitizeUtil.stripHtml(postDTO.getContent());
         // 前端未传 title 时保留原标题，或从正文生成
         String newTitle = postDTO.getTitle();
         if (newTitle == null || newTitle.isBlank()) {
@@ -90,7 +98,7 @@ public class PostService {
                 newTitle = "未命名帖子";
             }
         }
-        post.setTitle(newTitle);
+        post.setTitle(SanitizeUtil.stripHtml(newTitle));
         post.setSummary(buildSummary(content));
         post.setEditCount(post.getEditCount() == null ? 1 : post.getEditCount() + 1);
         postMapper.updateById(post);

@@ -5,6 +5,7 @@ import com.mars.post.domain.post.FeedService;
 import com.mars.post.domain.post.MentionService;
 import com.mars.post.domain.post.Post;
 import com.mars.post.domain.post.PostMapper;
+import com.mars.common.util.SanitizeUtil;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -27,6 +28,9 @@ public class CommentService {
         if (post == null) {
             throw new IllegalArgumentException("帖子不存在");
         }
+
+        // XSS 净化
+        comment.setContent(SanitizeUtil.stripHtml(comment.getContent()));
 
         comment.setCreateTime(LocalDateTime.now());
         commentMapper.insert(comment);

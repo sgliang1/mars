@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.mars.chat.domain.conversation.*;
 import com.mars.chat.domain.message.ConversationMessage;
 import com.mars.chat.domain.message.ConversationMessageMapper;
+import com.mars.common.util.SanitizeUtil;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -46,8 +47,8 @@ public class ChatRoomService {
 
     @Transactional
     public Map<String, Object> createRoom(Long userId, String username, String name, String description, String icon) {
-        String safeName = StringUtils.hasText(name) ? name.trim() : "聊天室";
-        String safeDesc = StringUtils.hasText(description) ? description.trim() : "欢迎加入聊天";
+        String safeName = SanitizeUtil.stripHtml(StringUtils.hasText(name) ? name.trim() : "聊天室");
+        String safeDesc = SanitizeUtil.stripHtml(StringUtils.hasText(description) ? description.trim() : "欢迎加入聊天");
         String safeIcon = StringUtils.hasText(icon) ? icon.trim() : "";
         LocalDateTime now = LocalDateTime.now();
 
