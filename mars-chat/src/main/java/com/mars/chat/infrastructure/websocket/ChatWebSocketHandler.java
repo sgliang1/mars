@@ -8,8 +8,6 @@ import com.mars.chat.domain.conversation.Conversation;
 import com.mars.chat.domain.conversation.ConversationMember;
 import com.mars.chat.domain.conversation.ConversationMemberMapper;
 import com.mars.chat.domain.conversation.ConversationMapper;
-import com.mars.chat.domain.message.ChatMessage;
-import com.mars.chat.domain.message.ChatMessageMapper;
 import com.mars.chat.domain.message.ConversationMessage;
 import com.mars.chat.domain.message.ConversationMessageMapper;
 import com.mars.chat.mq.ChatMessageProducer;
@@ -69,9 +67,6 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
 
     @Autowired
     private ConversationMessageMapper conversationMessageMapper;
-
-    @Autowired
-    private ChatMessageMapper chatMessageMapper;
 
     @Autowired
     private WebSocketSessionManager sessionManager;
@@ -394,20 +389,6 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
             redisPubSubListener.publish(broadcast);
         } catch (Exception e) {
             log.error("Redis broadcast error", e);
-        }
-    }
-
-    private void broadcastPublicViaRedis(ChatMessage msg) {
-        try {
-            String json = OBJECT_MAPPER.writeValueAsString(Result.success(msg));
-
-            RedisPubSubListener.BroadcastMessage broadcast = new RedisPubSubListener.BroadcastMessage();
-            broadcast.setType("public");
-            broadcast.setSenderId(null); // 公共消息不跳过任何人
-            broadcast.setMessageJson(json);
-            redisPubSubListener.publish(broadcast);
-        } catch (Exception e) {
-            log.error("Redis public broadcast error", e);
         }
     }
 
