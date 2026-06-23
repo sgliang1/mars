@@ -11,6 +11,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.web.bind.annotation.*;
 
 import com.mars.admin.common.AdminQueryDTO;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -152,5 +153,69 @@ public class AdminReportController {
         data.put("processed", processed != null ? processed : 0);
         data.put("ignored", ignored != null ? ignored : 0);
         return Result.success(data);
+    }
+
+    @GetMapping("/{id}/context")
+    @Operation(summary = "举报上下文", description = "获取举报详情及被举报内容的完整信息")
+    public Result<Map<String, Object>> getContext(@PathVariable("id") Long reportId) {
+        // 1. 获取举报详情
+        List<Map<String, Object>> reports = jdbcTemplate.queryForList(
+                "SELECT r.*, ru.username AS reporter_name FROM report r " +
+                        "LEFT JOIN user ru ON r.reporter_id = ru.id WHERE r.id = ?", reportId);
+        if (reports.isEmpty()) {
+            return Result.fail("举报不存在");
+        }
+
+        Map<String, Object> report = reports.get(0);
+        String targetType = (String) report.get("target_type");
+        Long targetId = ((Number) report.get("target_id")).longValue();
+
+        Map<String, Object> data = new HashMap<>();
+        data.put("report", report);
+
+        // 2. 根据目标类型获取被举报内容
+        switch (targetType) {
+            case "post" -> {
+                List<Map<String, Object>> posts = jdbcTemplate.queryForList(
+                        "SELECT p.*, u.username FROM post p " +
+                                "LEFT JOIN user u ON p.user_id = u.id WHERE p.id = ?", targetId);
+                if (!posts.isEmpty()) {
+                    data.put("targetPost", posts.get(0));
+                    data.put("targetUser", getUserBrief(((Number) posts.get(0).get("user_id")).longValue()));
+                }
+            }
+            case "comment" -> {
+                List<Map<String, Object>> comments = jdbcTemplate.queryForList(
+                        "SELECT c.*, u.username FROM comment c " +
+                                "LEFT JOIN user u ON c.user_id = u.id WHERE c.id = ?", targetId);
+                if (!comments.isEmpty()) {
+                    Map<String, Object> comment = comments.get(0);
+                    data.put("targetComment", comment);
+                    data.put("targetUser", getUserBrief(((Number) comment.get("user_id")).longValue()));
+
+                    // 获取所属帖子
+                    Long postId = ((Number) comment.get("post_id")).longValue();
+                    List<Map<String, Object>> parentPosts = jdbcTemplate.queryForList(
+                            "SELECT p.id, p.title, p.summary, u.username FROM post p " +
+                                    "LEFT JOIN user u ON p.user_id = u.id WHERE p.id = ?", postId);
+                    if (!parentPosts.isEmpty()) {
+                        data.put("parentPost", parentPosts.get(0));
+                    }
+                }
+            }
+            case "user" -> {
+                data.put("targetUser", getUserBrief(targetId));
+            }
+        }
+
+        return Result.success(data);
+    }
+
+    private Map<String, Object> getUserBrief(Long userId) {
+        List<Map<String, Object>> users = jdbcTemplate.queryForList(
+                "SELECT u.id, u.username, u.email, p.nickname, p.avatar_url, p.bio, " +
+                        "p.follower_count, p.status, p.created_at " +
+                        "FROM user u LEFT JOIN user_profile p ON u.id = p.user_id WHERE u.id = ?", userId);
+        return users.isEmpty() ? new HashMap<>() : users.get(0);
     }
 }
