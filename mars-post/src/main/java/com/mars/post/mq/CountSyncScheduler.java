@@ -7,16 +7,11 @@ import com.mars.post.domain.post.PostLikeMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.data.redis.core.RedisTemplate;
-import org.springframework.data.redis.core.ScanOptions;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 import java.time.Duration;
-import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * Redis 计数器定时回写调度器
@@ -65,7 +60,7 @@ public class CountSyncScheduler {
     private int syncLikeCounters() {
         int synced = 0;
         try {
-            Set<String> keys = scanKeys(CacheKeys.COUNT_LIKES + "*");
+            Set<String> keys = cacheService.scanKeys(CacheKeys.COUNT_LIKES + "*");
             if (keys.isEmpty()) return 0;
 
             for (String key : keys) {
@@ -95,7 +90,7 @@ public class CountSyncScheduler {
     private int syncCommentCounters() {
         int synced = 0;
         try {
-            Set<String> keys = scanKeys(CacheKeys.COUNT_COMMENTS + "*");
+            Set<String> keys = cacheService.scanKeys(CacheKeys.COUNT_COMMENTS + "*");
             if (keys.isEmpty()) return 0;
 
             for (String key : keys) {
@@ -118,26 +113,5 @@ public class CountSyncScheduler {
             log.error("扫描评论计数器失败: {}", e.getMessage());
         }
         return synced;
-    }
-
-    /**
-     * 使用 SCAN 替代 KEYS，避免阻塞 Redis
-     */
-    private Set<String> scanKeys(String pattern) {
-        Set<String> keys = new java.util.HashSet<>();
-        try {
-            cacheService.getRedisTemplate().execute((org.springframework.data.redis.core.RedisCallback<Void>) connection -> {
-                ScanOptions options = ScanOptions.scanOptions().match(pattern).count(100).build();
-                try (var cursor = connection.scan(options)) {
-                    while (cursor.hasNext()) {
-                        keys.add(new String(cursor.next()));
-                    }
-                }
-                return null;
-            });
-        } catch (Exception e) {
-            log.error("SCAN 操作失败: pattern={}, error={}", pattern, e.getMessage());
-        }
-        return keys;
     }
 }

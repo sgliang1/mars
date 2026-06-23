@@ -3,11 +3,13 @@ package com.mars.common.cache;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.core.ScanOptions;
 import org.springframework.stereotype.Service;
 
 import java.time.Duration;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
@@ -142,6 +144,30 @@ public class CacheService {
             log.warn("Set 读取全部成员失败: key={}, error={}", key, e.getMessage());
             return Collections.emptySet();
         }
+    }
+
+    // ==================== SCAN 安全扫描 ====================
+
+    /**
+     * 使用 SCAN 替代 KEYS，避免阻塞 Redis 主线程
+     * KEYS 是 O(N) 阻塞操作，数据量大时会冻结 Redis；SCAN 通过游标分批扫描
+     */
+    public Set<String> scanKeys(String pattern) {
+        Set<String> keys = new HashSet<>();
+        try {
+            redisTemplate.execute((org.springframework.data.redis.core.RedisCallback<Void>) connection -> {
+                ScanOptions options = ScanOptions.scanOptions().match(pattern).count(100).build();
+                try (var cursor = connection.scan(options)) {
+                    while (cursor.hasNext()) {
+                        keys.add(new String(cursor.next()));
+                    }
+                }
+                return null;
+            });
+        } catch (Exception e) {
+            log.warn("SCAN 操作失败: pattern={}, error={}", pattern, e.getMessage());
+        }
+        return keys;
     }
 
     // ==================== 分布式锁 ====================

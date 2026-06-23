@@ -38,6 +38,7 @@ public class AuthFilter implements GlobalFilter, Ordered {
 
         // 1. 白名单放行：公开接口不需要 Token
         if (path.contains("/mars-auth/login") || path.contains("/mars-auth/register")
+                || path.contains("/mars-auth/refresh")
                 || path.contains("/mars-admin/admin/auth/login")) {
             return chain.filter(exchange);
         }

@@ -35,7 +35,9 @@ import java.util.stream.Collectors;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import lombok.extern.slf4j.Slf4j;
 
+@Slf4j
 @RestController
 @RequestMapping("/posts")
 @Tag(name = "帖子", description = "帖子发布、查询、点赞")
@@ -167,8 +169,8 @@ public class PostController {
 
             return Result.successMessage(postDTO.getScheduledAt() != null ? "定时发布设置成功" : "发布成功");
         } catch (Exception e) {
-            e.printStackTrace();
-            return Result.fail("发布失败：" + e.getMessage());
+            log.error("发布帖子失败: userId={}", userIdStr, e);
+            return Result.fail("发布失败，请稍后重试");
         }
     }
 
@@ -212,14 +214,17 @@ public class PostController {
                     Object postVisible = cacheService.get(postVisibleKey);
                     return postVisible == null || !"0".equals(postVisible.toString());
                 }).collect(Collectors.toList());
-            } catch (Exception ignored) {}
+            } catch (Exception e) {
+                log.warn("过滤用户帖子异常: userId={}", userIdStr, e);
+            }
         }
 
         return Result.success(attachPostExtras(posts, userIdStr));
     }
 
     /**
-     * 当前用户的帖子列�?     */
+     * 当前用户的帖子列表
+     */
     @GetMapping("/mine")
     public Result<List<Post>> mine(@RequestHeader("X-User-Id") String userIdStr,
                                    @RequestParam(value = "page", defaultValue = "1") int page,
@@ -259,7 +264,9 @@ public class PostController {
                 Set<Long> likedPostIds = likes.stream().map(PostLike::getPostId).collect(Collectors.toSet());
 
                 postList.forEach(p -> p.setLiked(likedPostIds.contains(p.getId())));
-            } catch (Exception e) {}
+            } catch (Exception e) {
+                log.warn("查询帖子点赞状态异常", e);
+            }
         }
 
         return postList;
@@ -342,7 +349,9 @@ public class PostController {
                         return Result.fail("内容不存在");
                     }
                 }
-            } catch (Exception ignored) {}
+            } catch (Exception e) {
+                log.warn("检查帖子作者过滤状态异常: postId={}", id, e);
+            }
         }
 
         // isLiked 每次请求单独查询（用户特定）
@@ -353,7 +362,9 @@ public class PostController {
                 Long count = postLikeMapper.selectCount(new LambdaQueryWrapper<PostLike>()
                         .eq(PostLike::getPostId, id).eq(PostLike::getUserId, userId));
                 isLiked = count > 0;
-            } catch (Exception e) {}
+            } catch (Exception e) {
+                log.warn("查询帖子点赞状态异常: postId={}", id, e);
+            }
         }
         data.put("isLiked", isLiked);
 
@@ -363,7 +374,9 @@ public class PostController {
             data.put("viewCount", ((Number) data.getOrDefault("viewCount", 0)).intValue() + 1);
             // 失效缓存，让下次请求拿到新值
             cacheService.delete(cacheKey);
-        } catch (Exception ignored) {}
+        } catch (Exception e) {
+            log.warn("递增浏览量异常: postId={}", id, e);
+        }
 
         return Result.success(data);
     }
@@ -384,8 +397,8 @@ public class PostController {
             }
             return Result.successMessage("更新成功");
         } catch (Exception e) {
-            e.printStackTrace();
-            return Result.fail("更新失败：" + e.getMessage());
+            log.error("更新帖子失败: postId={}, userId={}", id, userIdStr, e);
+            return Result.fail("更新失败，请稍后重试");
         }
     }
 
@@ -404,8 +417,8 @@ public class PostController {
             }
             return Result.successMessage("删除成功");
         } catch (Exception e) {
-            e.printStackTrace();
-            return Result.fail("删除失败：" + e.getMessage());
+            log.error("删除帖子失败: postId={}, userId={}", id, userIdStr, e);
+            return Result.fail("删除失败，请稍后重试");
         }
     }
 
@@ -424,7 +437,9 @@ public class PostController {
         if (encodedUsername != null) {
             try {
                 username = URLDecoder.decode(encodedUsername, StandardCharsets.UTF_8.name());
-            } catch (Exception ignored) {}
+            } catch (Exception e) {
+                log.warn("URL解码用户名失败", e);
+            }
         }
 
         String result = postService.toggleLike(postId, userId, username);
@@ -450,7 +465,8 @@ public class PostController {
             String r2Url = s3Service.restoreToCloud(localFile, fileName);
             return Result.success(r2Url);
         } catch (Exception e) {
-            return Result.fail("同步失败：" + e.getMessage());
+            log.error("同步文件到云存储失败: fileName={}", fileName, e);
+            return Result.fail("同步失败，请稍后重试");
         }
     }
 }

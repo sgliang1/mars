@@ -23,6 +23,9 @@ public class AdminReportController {
     @Autowired
     private JdbcTemplate jdbcTemplate;
 
+    @Autowired
+    private AdminReportService adminReportService;
+
     @GetMapping
     @Operation(summary = "举报列表", description = "分页、筛选")
     public Result<AdminPageResult> list(
@@ -84,9 +87,9 @@ public class AdminReportController {
             @RequestHeader(value = "X-User-Name", required = false) String adminName,
             @PathVariable("id") Long reportId, @RequestBody Map<String, Object> body) {
 
-        String action = (String) body.get("action");       // "confirm_violation" | "ignore"
-        String postAction = (String) body.get("postAction"); // "hide" | "delete"
-        Number banDaysNum = (Number) body.get("banDays");    // 0=不封禁
+        String action = (String) body.get("action");
+        String postAction = (String) body.get("postAction");
+        Number banDaysNum = (Number) body.get("banDays");
         String reason = (String) body.get("reason");
 
         Long handlerId = adminId != null ? Long.parseLong(adminId) : null;
@@ -96,93 +99,14 @@ public class AdminReportController {
             return Result.fail("action 不能为空");
         }
 
-        // 获取举报信息
-        List<Map<String, Object>> reports = jdbcTemplate.queryForList(
-                "SELECT * FROM report WHERE id = ?", reportId);
-        if (reports.isEmpty()) {
-            return Result.fail("举报不存在");
+        int banDays = banDaysNum != null ? banDaysNum.intValue() : 0;
+
+        try {
+            adminReportService.handleReport(reportId, action, postAction, banDays, reason, handlerId, handlerName);
+            return Result.successMessage("处理成功");
+        } catch (IllegalArgumentException e) {
+            return Result.fail(e.getMessage());
         }
-
-        Map<String, Object> report = reports.get(0);
-        String targetType = (String) report.get("target_type");
-        Long targetId = ((Number) report.get("target_id")).longValue();
-
-        if ("confirm_violation".equals(action)) {
-            // ——— 确认违规 ———
-
-            // 1. 处理帖子（target_type 为 post 或 comment 时）
-            Long targetUserId = null;
-            if ("post".equals(targetType)) {
-                if (postAction == null) return Result.fail("帖子处理方式不能为空");
-                targetUserId = getPostUserId(targetId);
-
-                if ("delete".equals(postAction)) {
-                    jdbcTemplate.update(
-                            "UPDATE post SET deleted_at = NOW(), display_status = 2, reviewed_by = ?, reviewed_at = NOW() WHERE id = ?",
-                            handlerId, targetId);
-                } else {
-                    // hide
-                    jdbcTemplate.update(
-                            "UPDATE post SET display_status = 2, reviewed_by = ?, reviewed_at = NOW() WHERE id = ?",
-                            handlerId, targetId);
-                }
-            } else if ("comment".equals(targetType)) {
-                if (postAction == null) return Result.fail("评论处理方式不能为空");
-                targetUserId = getCommentUserId(targetId);
-
-                if ("delete".equals(postAction)) {
-                    jdbcTemplate.update(
-                            "UPDATE comment SET deleted_at = NOW(), deleted_by = ? WHERE id = ?",
-                            handlerId, targetId);
-                } else {
-                    // hide: 评论没有 display_status，只能删除
-                    jdbcTemplate.update(
-                            "UPDATE comment SET deleted_at = NOW(), deleted_by = ? WHERE id = ?",
-                            handlerId, targetId);
-                }
-            } else if ("user".equals(targetType)) {
-                targetUserId = targetId;
-            }
-
-            // 2. 封禁用户（可选）
-            int banDays = banDaysNum != null ? banDaysNum.intValue() : 0;
-            if (banDays > 0 && targetUserId != null) {
-                String banUntil = java.time.LocalDateTime.now().plusDays(banDays)
-                        .format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
-                jdbcTemplate.update(
-                        "UPDATE user_profile SET status = 0, ban_until = ? WHERE user_id = ?",
-                        banUntil, targetUserId);
-                // 隐藏该用户所有已发布帖子
-                jdbcTemplate.update(
-                        "UPDATE post SET display_status = 2 WHERE user_id = ? AND display_status = 1 AND deleted_at IS NULL",
-                        targetUserId);
-            }
-
-            // 3. 更新举报状态
-            String resultText = reason != null ? reason : "确认违规";
-            if (banDays > 0) {
-                resultText += "（封禁" + banDays + "天）";
-            }
-            jdbcTemplate.update(
-                    "UPDATE report SET status = 1, handler_id = ?, handle_result = ?, handled_at = NOW() WHERE id = ?",
-                    handlerId, resultText, reportId);
-
-            // 4. 审计日志
-            String auditDetail = String.format("确认违规 | 帖子操作: %s | 封禁天数: %d | 原因: %s",
-                    postAction != null ? postAction : "-", banDays, reason != null ? reason : "-");
-            jdbcTemplate.update(
-                    "INSERT INTO admin_audit_log (admin_id, admin_username, action, target_type, target_id, detail, created_at) " +
-                            "VALUES (?, ?, 'confirm_violation', ?, ?, ?, NOW())",
-                    handlerId, handlerName, targetType, targetId, auditDetail);
-
-        } else {
-            // ——— 忽略举报 ———
-            jdbcTemplate.update(
-                    "UPDATE report SET status = 2, handler_id = ?, handle_result = ?, handled_at = NOW() WHERE id = ?",
-                    handlerId, reason != null ? reason : "管理员忽略此举报", reportId);
-        }
-
-        return Result.successMessage("处理成功");
     }
 
     private Long getPostUserId(Long postId) {

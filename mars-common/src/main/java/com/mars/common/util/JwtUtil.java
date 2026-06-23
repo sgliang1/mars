@@ -10,62 +10,74 @@ import javax.crypto.SecretKey;
 import java.nio.charset.StandardCharsets;
 import java.util.Date;
 
-/**
- * JWT 工具类
- * 修改说明：
- * 1. 添加 @Component 注解，交给 Spring 管理
- * 2. 使用 @Value 注入配置文件中的 mars.jwt.secret
- * 3. 去除硬编码的静态密钥
- */
 @Component
 public class JwtUtil {
 
-    // 静态变量存储密钥，供静态方法使用
     private static SecretKey KEY;
 
-    // Token 过期时间：24小时 (86400000毫秒)
-    private static final long EXPIRATION_TIME = 86400000;
+    // Access token: 2 hours
+    private static final long ACCESS_EXPIRATION_TIME = 2 * 60 * 60 * 1000L;
 
-    /**
-     * 利用 Spring 的 Setter 注入特性，将配置文件的值赋给静态变量
-     * 配置文件需配置：mars.jwt.secret=你的复杂密钥字符串
-     */
+    // Refresh token: 30 days
+    private static final long REFRESH_EXPIRATION_TIME = 30L * 24 * 60 * 60 * 1000;
+
     @Value("${mars.jwt.secret}")
     public void setSecret(String secret) {
         JwtUtil.KEY = Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
     }
 
-    /**
-     * 生成 Token（不含角色）
-     */
+    // ==================== Access Token ====================
+
     public static String generateToken(Long userId, String username) {
         return generateToken(userId, username, null);
     }
 
-    /**
-     * 生成 Token（含角色）
-     */
     public static String generateToken(Long userId, String username, String role) {
         var builder = Jwts.builder()
                 .subject(username)
                 .claim("userId", userId)
                 .claim("username", username)
                 .issuedAt(new Date())
-                .expiration(new Date(System.currentTimeMillis() + EXPIRATION_TIME));
+                .expiration(new Date(System.currentTimeMillis() + ACCESS_EXPIRATION_TIME));
         if (role != null && !role.isBlank()) {
             builder.claim("role", role);
         }
         return builder.signWith(KEY).compact();
     }
 
+    // ==================== Refresh Token ====================
+
     /**
-     * 解析 Token
+     * 生成刷新令牌（30天过期，带 type=refresh 标识）
      */
+    public static String generateRefreshToken(Long userId, String username) {
+        return Jwts.builder()
+                .subject(username)
+                .claim("userId", userId)
+                .claim("username", username)
+                .claim("type", "refresh")
+                .issuedAt(new Date())
+                .expiration(new Date(System.currentTimeMillis() + REFRESH_EXPIRATION_TIME))
+                .signWith(KEY)
+                .compact();
+    }
+
+    // ==================== 通用解析 ====================
+
     public static Claims parseToken(String token) {
         return Jwts.parser()
                 .verifyWith(KEY)
                 .build()
                 .parseSignedClaims(token)
                 .getPayload();
+    }
+
+    /**
+     * 获取 token 类型："access" 或 "refresh"
+     */
+    public static String getTokenType(String token) {
+        Claims claims = parseToken(token);
+        Object type = claims.get("type");
+        return type != null ? type.toString() : "access";
     }
 }

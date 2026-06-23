@@ -24,6 +24,9 @@ public class AdminUserController {
     @Autowired
     private JdbcTemplate jdbcTemplate;
 
+    @Autowired
+    private AdminUserService adminUserService;
+
     @GetMapping
     @Operation(summary = "用户列表", description = "分页、搜索、多维度筛选")
     public Result<AdminPageResult> list(
@@ -43,7 +46,8 @@ public class AdminUserController {
 
         AdminQueryBuilder builder = AdminQueryBuilder.from("user u",
                 "u.id, u.username, u.email, p.nickname, p.avatar_url, p.bio, " +
-                        "p.follower_count, p.following_count, p.status AS profile_status, p.gender, p.created_at");
+                        "COALESCE(p.follower_count, 0) AS follower_count, COALESCE(p.following_count, 0) AS following_count, " +
+                        "COALESCE(p.status, 1) AS status, p.gender, p.created_at, p.ban_until");
 
         builder.join("LEFT JOIN user_profile p ON u.id = p.user_id");
 
@@ -126,37 +130,14 @@ public class AdminUserController {
         if (status == null) {
             return Result.fail("状态不能为空");
         }
-
         Number banDaysNum = (Number) body.get("banDays");
         int banDays = banDaysNum != null ? banDaysNum.intValue() : 0;
 
-        if (status == 0) {
-            // 封禁：设置 ban_until，隐藏用户所有帖子
-            String banUntil = null;
-            if (banDays > 0) {
-                banUntil = java.time.LocalDateTime.now().plusDays(banDays)
-                        .format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
-            }
-            int rows = jdbcTemplate.update(
-                    "UPDATE user_profile SET status = 0, ban_until = ? WHERE user_id = ?",
-                    banUntil, userId);
-            if (rows == 0) {
-                return Result.fail("用户不存在");
-            }
-            // 隐藏该用户所有已发布帖子
-            jdbcTemplate.update(
-                    "UPDATE post SET display_status = 2 WHERE user_id = ? AND display_status = 1 AND deleted_at IS NULL",
-                    userId);
-            return Result.successMessage(banDays > 0 ? "用户已封禁" + banDays + "天" : "用户已永久封禁");
-        } else {
-            // 解封：清除 ban_until
-            int rows = jdbcTemplate.update(
-                    "UPDATE user_profile SET status = 1, ban_until = NULL WHERE user_id = ?",
-                    userId);
-            if (rows == 0) {
-                return Result.fail("用户不存在");
-            }
-            return Result.successMessage("用户已解封");
+        try {
+            String message = adminUserService.updateUserStatus(userId, status, banDays);
+            return Result.successMessage(message);
+        } catch (IllegalArgumentException e) {
+            return Result.fail(e.getMessage());
         }
     }
 
@@ -167,15 +148,7 @@ public class AdminUserController {
             @RequestHeader(value = "X-User-Id", required = false) String adminId,
             @PathVariable("id") Long userId) {
         Long adminUserId = adminId != null ? Long.parseLong(adminId) : null;
-        jdbcTemplate.update("DELETE FROM user_relation WHERE follower_id = ? OR followed_id = ?", userId, userId);
-        jdbcTemplate.update("DELETE FROM post_like WHERE user_id = ?", userId);
-        jdbcTemplate.update("DELETE FROM post_favorite WHERE user_id = ?", userId);
-        jdbcTemplate.update("DELETE FROM post_browse_history WHERE user_id = ?", userId);
-        // 帖子和评论改为软删除（保留证据）
-        jdbcTemplate.update("UPDATE comment SET deleted_at = NOW(), deleted_by = ? WHERE user_id = ? AND deleted_at IS NULL", adminUserId, userId);
-        jdbcTemplate.update("UPDATE post SET deleted_at = NOW(), deleted_by = ?, display_status = 2 WHERE user_id = ? AND deleted_at IS NULL", adminUserId, userId);
-        jdbcTemplate.update("DELETE FROM user_profile WHERE user_id = ?", userId);
-        jdbcTemplate.update("DELETE FROM user WHERE id = ?", userId);
+        adminUserService.deleteUser(userId, adminUserId);
         return Result.successMessage("用户已注销");
     }
 

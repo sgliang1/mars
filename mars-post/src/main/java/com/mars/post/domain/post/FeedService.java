@@ -10,6 +10,7 @@ import com.mars.post.domain.filter.UserFilterService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
@@ -24,6 +25,7 @@ import java.util.*;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
+@Slf4j
 @Service
 public class FeedService {
 
@@ -195,12 +197,12 @@ public class FeedService {
      * 清除用户相关的 Feed 缓存（发帖、关注变更时调用）
      */
     public void evictUserFeedCache(Long userId) {
-        Set<String> keys = redisTemplate.keys(FEED_CACHE_KEY + "following:" + userId + ":*");
-        if (keys != null && !keys.isEmpty()) {
+        Set<String> keys = cacheService.scanKeys(FEED_CACHE_KEY + "following:" + userId + ":*");
+        if (!keys.isEmpty()) {
             redisTemplate.delete(keys);
         }
-        Set<String> recKeys = redisTemplate.keys(FEED_CACHE_KEY + "recommended:" + userId + ":*");
-        if (recKeys != null && !recKeys.isEmpty()) {
+        Set<String> recKeys = cacheService.scanKeys(FEED_CACHE_KEY + "recommended:" + userId + ":*");
+        if (!recKeys.isEmpty()) {
             redisTemplate.delete(recKeys);
         }
     }
@@ -209,12 +211,12 @@ public class FeedService {
      * 清除全站热度/最新流缓存（点赞、评论、转发时调用）
      */
     public void evictHotFeedCache() {
-        Set<String> hotKeys = redisTemplate.keys(FEED_CACHE_KEY + "hot:*");
-        if (hotKeys != null && !hotKeys.isEmpty()) {
+        Set<String> hotKeys = cacheService.scanKeys(FEED_CACHE_KEY + "hot:*");
+        if (!hotKeys.isEmpty()) {
             redisTemplate.delete(hotKeys);
         }
-        Set<String> latestKeys = redisTemplate.keys(FEED_CACHE_KEY + "latest:*");
-        if (latestKeys != null && !latestKeys.isEmpty()) {
+        Set<String> latestKeys = cacheService.scanKeys(FEED_CACHE_KEY + "latest:*");
+        if (!latestKeys.isEmpty()) {
             redisTemplate.delete(latestKeys);
         }
     }
@@ -227,7 +229,9 @@ public class FeedService {
             namedJdbcTemplate.getJdbcTemplate().update(
                     "INSERT INTO user_behavior (user_id, target_id, action) VALUES (?, ?, ?)",
                     userId, targetId, action);
-        } catch (Exception ignored) {}
+        } catch (Exception e) {
+            log.warn("记录用户行为失败: userId={}, targetId={}", userId, targetId, e);
+        }
     }
 
     private List<Post> mapToPosts(List<Map<String, Object>> rows) {
