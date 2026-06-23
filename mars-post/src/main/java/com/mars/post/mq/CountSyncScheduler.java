@@ -41,19 +41,21 @@ public class CountSyncScheduler {
     @Scheduled(fixedRate = 300000) // 5 分钟
     public void syncCounters() {
         // 分布式锁，防止多实例重复执行
-        Boolean locked = cacheService.tryLock("lock:count-sync-task", Duration.ofSeconds(280));
-        if (locked == null || !locked) {
+        String lockOwner = cacheService.tryLock("lock:count-sync-task", Duration.ofSeconds(280));
+        if (lockOwner == null) {
             log.debug("计数器同步任务未获取到锁，跳过本次执行");
             return;
         }
         try {
             int likeCount = syncLikeCounters();
             int commentCount = syncCommentCounters();
-            if (likeCount > 0 || commentCount > 0) {
-                log.info("计数器同步完成: 点赞同步 {} 个帖子, 评论同步 {} 个帖子", likeCount, commentCount);
+            int viewCount = syncViewCounters();
+            if (likeCount > 0 || commentCount > 0 || viewCount > 0) {
+                log.info("计数器同步完成: 点赞同步 {} 个帖子, 评论同步 {} 个帖子, 浏览量同步 {} 个帖子",
+                         likeCount, commentCount, viewCount);
             }
         } finally {
-            cacheService.delete("lock:count-sync-task");
+            cacheService.unlock("lock:count-sync-task", lockOwner);
         }
     }
 
@@ -111,6 +113,38 @@ public class CountSyncScheduler {
             }
         } catch (Exception e) {
             log.error("扫描评论计数器失败: {}", e.getMessage());
+        }
+        return synced;
+    }
+
+    private int syncViewCounters() {
+        int synced = 0;
+        try {
+            Set<String> keys = cacheService.scanKeys(CacheKeys.COUNT_VIEWS + "*");
+            if (keys.isEmpty()) return 0;
+
+            for (String key : keys) {
+                try {
+                    Object value = cacheService.get(key);
+                    if (value == null) continue;
+                    long count = Long.parseLong(value.toString());
+                    if (count == 0) continue;
+
+                    String postIdStr = key.substring(CacheKeys.COUNT_VIEWS.length());
+                    Long postId = Long.parseLong(postIdStr);
+
+                    postMapper.incrementViewCount(postId, count);
+                    synced++;
+                } catch (Exception e) {
+                    log.warn("同步帖子浏览量计数失败: key={}, error={}", key, e.getMessage());
+                }
+            }
+            // 回写后清理增量 key，小窗口内新到的 increment 会丢失（可接受）
+            for (String key : keys) {
+                cacheService.delete(key);
+            }
+        } catch (Exception e) {
+            log.error("扫描浏览量计数器失败: {}", e.getMessage());
         }
         return synced;
     }

@@ -2,6 +2,7 @@ package com.mars.gateway.filter;
 
 import com.mars.common.util.JwtUtil;
 import io.jsonwebtoken.Claims;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.cloud.gateway.filter.GatewayFilterChain;
 import org.springframework.cloud.gateway.filter.GlobalFilter;
 import org.springframework.core.Ordered;
@@ -14,6 +15,9 @@ import reactor.core.publisher.Mono;
 
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * 网关全局鉴权过滤器
@@ -26,20 +30,66 @@ import java.nio.charset.StandardCharsets;
 @Component
 public class AuthFilter implements GlobalFilter, Ordered {
 
+    /**
+     * 白名单路径列表，从配置文件读取，支持热更新
+     * 格式：逗号分隔的精确路径，如 /mars-auth/login,/mars-auth/register
+     */
+    @Value("${gateway.auth.whitelist:}")
+    private String whitelistConfig;
+
+    private volatile Set<String> whitelistPaths;
+
+    /**
+     * 获取白名单集合（惰性解析，避免每次请求都 split）
+     */
+    private Set<String> getWhitelistPaths() {
+        Set<String> paths = this.whitelistPaths;
+        if (paths == null) {
+            synchronized (this) {
+                paths = this.whitelistPaths;
+                if (paths == null) {
+                    paths = Arrays.stream(whitelistConfig.split(","))
+                            .map(String::trim)
+                            .filter(s -> !s.isEmpty())
+                            .collect(Collectors.toUnmodifiableSet());
+                    this.whitelistPaths = paths;
+                }
+            }
+        }
+        return paths;
+    }
+
+    /**
+     * 规范化路径：去除尾部斜杠（根路径 "/" 除外）、合并连续斜杠
+     * 防止 /mars-auth/login/ 或 /mars-auth//login 等变体绕过精确匹配
+     */
+    private String normalizePath(String path) {
+        if (path == null || path.isEmpty()) {
+            return "/";
+        }
+        // 合并连续斜杠：// -> /
+        String normalized = path.replaceAll("/+", "/");
+        // 去除尾部斜杠（保留根路径）
+        if (normalized.length() > 1 && normalized.endsWith("/")) {
+            normalized = normalized.substring(0, normalized.length() - 1);
+        }
+        return normalized;
+    }
+
     @Override
     public Mono<Void> filter(ServerWebExchange exchange, GatewayFilterChain chain) {
         ServerHttpRequest request = exchange.getRequest();
-        String path = request.getURI().getPath();
 
         // 0. OPTIONS 预检请求直接放行，确保 CorsWebFilter 能正常注入 CORS 响应头
         if (request.getMethod() == org.springframework.http.HttpMethod.OPTIONS) {
             return chain.filter(exchange);
         }
 
-        // 1. 白名单放行：公开接口不需要 Token
-        if (path.contains("/mars-auth/login") || path.contains("/mars-auth/register")
-                || path.contains("/mars-auth/refresh")
-                || path.contains("/mars-admin/admin/auth/login")) {
+        // 规范化路径，防止尾部斜杠、连续斜杠等变体绕过精确匹配
+        String path = normalizePath(request.getURI().getPath());
+
+        // 1. 白名单放行：公开接口不需要 Token（使用精确匹配，防止子串绕过）
+        if (getWhitelistPaths().contains(path)) {
             return chain.filter(exchange);
         }
 
@@ -69,7 +119,7 @@ public class AuthFilter implements GlobalFilter, Ordered {
 
             String userId = claims.get("userId").toString();
             String username = claims.get("username").toString();
-            String role = claims.get("role") != null ? claims.get("role").toString() : "";
+            String role = claims.get("role") != null ? claims.get("role").toString() : "user";
 
             // 对用户名进行 URL 编码，防止 Header 中传递中文导致乱码或报错
             String encodedUsername = URLEncoder.encode(username, StandardCharsets.UTF_8.name());

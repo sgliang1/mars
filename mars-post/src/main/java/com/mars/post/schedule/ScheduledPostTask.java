@@ -34,8 +34,8 @@ class ScheduledPostTask {
     @Transactional
     public void publishScheduledPosts() {
         // 分布式锁，防止多实例重复执行
-        Boolean locked = cacheService.tryLock("lock:scheduled-post-task", Duration.ofSeconds(55));
-        if (locked == null || !locked) {
+        String lockOwner = cacheService.tryLock("lock:scheduled-post-task", Duration.ofSeconds(55));
+        if (lockOwner == null) {
             logger.debug("定时发布任务未获取到锁，跳过本次执行");
             return;
         }
@@ -65,7 +65,7 @@ class ScheduledPostTask {
 
             logger.info("本轮定时发布完成，共发布 {} 篇帖子", published);
         } finally {
-            cacheService.delete("lock:scheduled-post-task");
+            cacheService.unlock("lock:scheduled-post-task", lockOwner);
         }
     }
 }

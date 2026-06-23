@@ -6,15 +6,15 @@ import com.mars.post.domain.post.Post;
 import com.mars.post.domain.post.PostContent;
 import com.mars.post.domain.post.PostImage;
 import com.mars.post.domain.post.PostLike;
-import com.mars.post.domain.comment.CommentMapper;
 import com.mars.post.domain.post.PostContentMapper;
 import com.mars.post.domain.post.PostImageMapper;
 import com.mars.post.domain.post.PostLikeMapper;
 import com.mars.post.domain.post.PostMapper;
-import com.mars.post.domain.notification.NotificationHelper;
+import com.mars.common.mq.NotificationMessage;
 import com.mars.common.cache.CacheKeys;
 import com.mars.common.cache.CacheService;
 import com.mars.common.util.SanitizeUtil;
+import com.mars.post.mq.NotificationProducer;
 import com.mars.post.mq.SearchSyncProducer;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -31,8 +31,7 @@ public class PostService {
     @Autowired private PostContentMapper contentMapper;
     @Autowired private PostImageMapper postImageMapper;
     @Autowired private PostLikeMapper postLikeMapper;
-    @Autowired private CommentMapper commentMapper;
-    @Autowired private NotificationHelper notificationHelper;
+    @Autowired private NotificationProducer notificationProducer;
     @Autowired private CacheService cacheService;
     @Autowired private SearchSyncProducer searchSyncProducer;
     @Autowired private PostEditHistoryMapper editHistoryMapper;
@@ -164,8 +163,8 @@ public class PostService {
     public String toggleLike(Long postId, Long userId, String username) {
         // 幂等锁：同一用户对同一帖子的操作串行化
         String lockKey = "lock:like:" + userId + ":" + postId;
-        Boolean locked = cacheService.tryLock(lockKey, Duration.ofSeconds(3));
-        if (locked == null || !locked) {
+        String lockOwner = cacheService.tryLock(lockKey, Duration.ofSeconds(3));
+        if (lockOwner == null) {
             throw new IllegalStateException("操作过于频繁，请稍后再试");
         }
         try {
@@ -195,13 +194,25 @@ public class PostService {
                 cacheService.delete(CacheKeys.key(CacheKeys.POST_DETAIL, postId));
                 feedService.evictHotFeedCache();
                 try {
-                    notificationHelper.notifyLike(userId, username != null ? username : "匿名", postId);
+                    // 通知通过 MQ 异步发送到 mars-interaction 消费
+                    Post postForNotify = postMapper.selectById(postId);
+                    if (postForNotify != null && !postForNotify.getUserId().equals(userId)) {
+                        NotificationMessage msg = new NotificationMessage(
+                                postForNotify.getUserId(), "interaction",
+                                username != null ? username : "匿名",
+                                "{\"actorId\":\"" + userId + "\",\"postId\":\"" + postId + "\",\"postTitle\":\"" +
+                                        SanitizeUtil.stripHtml(postForNotify.getTitle()) + "\"}",
+                                "like", String.valueOf(postId));
+                        msg.setActorId(userId);
+                        msg.setPostId(postId);
+                        notificationProducer.sendInteraction(msg);
+                    }
                 } catch (Exception ignored) {}
 
                 return "liked";
             }
         } finally {
-            cacheService.delete(lockKey);
+            cacheService.unlock(lockKey, lockOwner);
         }
     }
 

@@ -17,6 +17,8 @@
         <module>mars-post</module>
         <module>mars-chat</module>
         <module>mars-admin</module>
+        <module>mars-search</module>
+        <module>mars-interaction</module>
     </modules>
 
     <properties>

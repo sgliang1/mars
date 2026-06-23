@@ -6,12 +6,11 @@ import org.apache.rocketmq.spring.core.RocketMQTemplate;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.messaging.support.MessageBuilder;
 import org.springframework.stereotype.Component;
 
 /**
- * 通知消息生产者
- * 将互动通知（点赞/评论/关注）发送到 MQ，由消费者异步写入 DB
+ * 通知消息生产者（轻量版，仅发 MQ，不消费）
+ * 由 PostService 在点赞时发送通知事件到 mars-interaction 消费
  */
 @Component
 public class NotificationProducer {
@@ -21,9 +20,6 @@ public class NotificationProducer {
     @Autowired(required = false)
     private RocketMQTemplate rocketMQTemplate;
 
-    /**
-     * 发送互动通知消息
-     */
     public void sendInteraction(NotificationMessage message) {
         if (rocketMQTemplate == null) {
             log.warn("RocketMQTemplate 未配置，跳过通知消息发送");

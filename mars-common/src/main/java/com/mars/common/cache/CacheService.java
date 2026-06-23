@@ -4,6 +4,9 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.core.ScanOptions;
+import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.core.script.DefaultRedisScript;
+import org.springframework.data.redis.core.script.RedisScript;
 import org.springframework.stereotype.Service;
 
 import java.time.Duration;
@@ -11,6 +14,7 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -23,6 +27,7 @@ import java.util.concurrent.TimeUnit;
 public class CacheService {
 
     private final RedisTemplate<String, Object> redisTemplate;
+    private final StringRedisTemplate stringRedisTemplate;
 
     // ==================== 基础读写 ====================
 
@@ -172,9 +177,48 @@ public class CacheService {
 
     // ==================== 分布式锁 ====================
 
-    public Boolean tryLock(String key, Duration ttl) {
+    /**
+     * Lua 脚本：原子性校验并删除锁（仅当 value 匹配时才删除，防止误删其他线程的锁）
+     * KEYS[1] = lock key，ARGV[1] = expected owner token
+     * 返回 1 = 成功删除，0 = 不是自己的锁或锁不存在
+     */
+    private static final RedisScript<Long> UNLOCK_SCRIPT = new DefaultRedisScript<>(
+            "if redis.call('get', KEYS[1]) == ARGV[1] then " +
+            "  return redis.call('del', KEYS[1]) " +
+            "else " +
+            "  return 0 " +
+            "end",
+            Long.class
+    );
+
+    /**
+     * 尝试获取分布式锁
+     * @param key  锁 key
+     * @param ttl  锁过期时间
+     * @return 锁的 owner token（UUID），获取失败返回 null
+     */
+    public String tryLock(String key, Duration ttl) {
         try {
-            return redisTemplate.opsForValue().setIfAbsent(key, "1", ttl);
+            String token = UUID.randomUUID().toString();
+            Boolean acquired = stringRedisTemplate.opsForValue()
+                    .setIfAbsent(key, token, ttl);
+            return Boolean.TRUE.equals(acquired) ? token : null;
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    /**
+     * 释放分布式锁（仅当 owner 匹配时才删除）
+     * @param key   锁 key
+     * @param owner tryLock 返回的 owner token
+     * @return true = 成功释放，false = 非 owner 或锁不存在
+     */
+    public boolean unlock(String key, String owner) {
+        try {
+            Long result = stringRedisTemplate.execute(
+                    UNLOCK_SCRIPT, Collections.singletonList(key), owner);
+            return result != null && result > 0;
         } catch (Exception e) {
             return false;
         }

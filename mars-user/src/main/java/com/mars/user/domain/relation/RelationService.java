@@ -73,8 +73,8 @@ public class RelationService {
         }
         // 幂等锁：防止并发重复关注
         String lockKey = "lock:follow:" + followerId + ":" + followedId;
-        Boolean locked = cacheService.tryLock(lockKey, Duration.ofSeconds(3));
-        if (locked == null || !locked) {
+        String lockOwner = cacheService.tryLock(lockKey, Duration.ofSeconds(3));
+        if (lockOwner == null) {
             throw new IllegalStateException("操作过于频繁，请稍后再试");
         }
         try {
@@ -111,7 +111,7 @@ public class RelationService {
 
             relationEventService.recordEvent(followerId, followedId, "follow");
         } finally {
-            cacheService.delete(lockKey);
+            cacheService.unlock(lockKey, lockOwner);
         }
     }
 
@@ -119,8 +119,8 @@ public class RelationService {
     public void unfollow(Long followerId, Long followedId) {
         // 幂等锁：防止并发重复取关
         String lockKey = "lock:follow:" + followerId + ":" + followedId;
-        Boolean locked = cacheService.tryLock(lockKey, Duration.ofSeconds(3));
-        if (locked == null || !locked) {
+        String lockOwner = cacheService.tryLock(lockKey, Duration.ofSeconds(3));
+        if (lockOwner == null) {
             throw new IllegalStateException("操作过于频繁，请稍后再试");
         }
         try {
@@ -140,7 +140,7 @@ public class RelationService {
 
             relationEventService.recordEvent(followerId, followedId, "unfollow");
         } finally {
-            cacheService.delete(lockKey);
+            cacheService.unlock(lockKey, lockOwner);
         }
     }
 

@@ -12,6 +12,8 @@ import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
+import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -37,6 +39,9 @@ public class AdminPostController {
 
     @Autowired
     private JdbcTemplate jdbcTemplate;
+
+    @Autowired
+    private NamedParameterJdbcTemplate namedParameterJdbcTemplate;
 
     @Autowired
     private PushService pushService;
@@ -398,28 +403,30 @@ public class AdminPostController {
         }
 
         Long reviewerId = adminId != null ? Long.parseLong(adminId) : null;
-        String idStr = ids.stream().map(String::valueOf).collect(java.util.stream.Collectors.joining(","));
+        MapSqlParameterSource params = new MapSqlParameterSource()
+                .addValue("ids", ids)
+                .addValue("reviewerId", reviewerId);
 
         switch (action) {
             case "approve" -> {
-                jdbcTemplate.update(
-                        "UPDATE post SET audit_status = ?, last_auditor_id = ?, reviewed_by = ?, reviewed_at = NOW() WHERE id IN (" + idStr + ")",
-                        AUDIT_HUMAN_PASS, reviewerId, reviewerId);
+                namedParameterJdbcTemplate.update(
+                        "UPDATE post SET audit_status = :auditStatus, last_auditor_id = :reviewerId, reviewed_by = :reviewerId, reviewed_at = NOW() WHERE id IN (:ids)",
+                        params.addValue("auditStatus", AUDIT_HUMAN_PASS));
             }
             case "reject" -> {
-                jdbcTemplate.update(
-                        "UPDATE post SET audit_status = ?, display_status = ?, last_auditor_id = ?, reviewed_by = ?, reviewed_at = NOW() WHERE id IN (" + idStr + ")",
-                        AUDIT_HUMAN_REJECT, DISPLAY_OFFLINE, reviewerId, reviewerId);
+                namedParameterJdbcTemplate.update(
+                        "UPDATE post SET audit_status = :auditStatus, display_status = :displayStatus, last_auditor_id = :reviewerId, reviewed_by = :reviewerId, reviewed_at = NOW() WHERE id IN (:ids)",
+                        params.addValue("auditStatus", AUDIT_HUMAN_REJECT).addValue("displayStatus", DISPLAY_OFFLINE));
             }
             case "delete" -> {
                 // 批量软删除帖子（保留证据）
-                jdbcTemplate.update(
-                        "UPDATE post SET deleted_at = NOW(), deleted_by = ?, display_status = ? WHERE id IN (" + idStr + ") AND deleted_at IS NULL",
-                        reviewerId, DISPLAY_OFFLINE);
+                namedParameterJdbcTemplate.update(
+                        "UPDATE post SET deleted_at = NOW(), deleted_by = :reviewerId, display_status = :displayStatus WHERE id IN (:ids) AND deleted_at IS NULL",
+                        params.addValue("displayStatus", DISPLAY_OFFLINE));
                 // 同步软删除评论
-                jdbcTemplate.update(
-                        "UPDATE comment SET deleted_at = NOW(), deleted_by = ? WHERE post_id IN (" + idStr + ") AND deleted_at IS NULL",
-                        reviewerId);
+                namedParameterJdbcTemplate.update(
+                        "UPDATE comment SET deleted_at = NOW(), deleted_by = :reviewerId WHERE post_id IN (:ids) AND deleted_at IS NULL",
+                        params);
             }
             default -> {
                 return Result.fail("不支持的操作类型: " + action);

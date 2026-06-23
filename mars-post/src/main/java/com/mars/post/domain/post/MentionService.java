@@ -1,31 +1,22 @@
 package com.mars.post.domain.post;
 
-import com.mars.post.domain.notification.NotificationHelper;
+import com.mars.common.mq.NotificationMessage;
+import com.mars.post.mq.NotificationProducer;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
-import java.util.ArrayList;
 import java.util.List;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 @Service
 public class MentionService {
 
-    private static final Pattern MENTION_PATTERN = Pattern.compile("@(\\S+?)(?=\\s|$|[^\\w\\u4e00-\\u9fff])");
-
     @Autowired private PostMentionMapper mentionMapper;
-    @Autowired private NotificationHelper notificationHelper;
+    @Autowired private NotificationProducer notificationProducer;
 
     /**
      * 解析内容中的 @username，写入 mention 表并发送通知
-     * @param postId 帖子ID（发帖时使用）
-     * @param commentId 评论ID（评论时使用）
-     * @param content 内容文本
-     * @param actorId 操作者ID
-     * @param actorName 操作者名称
-     * @param mentionedUserIds 被@用户的ID列表（由前端在选择@时传入）
+     * 通知通过 MQ 异步发送到 mars-interaction 消费
      */
     public void parseAndSave(Long postId, Long commentId, String content,
                              Long actorId, String actorName, List<Long> mentionedUserIds) {
@@ -43,9 +34,18 @@ public class MentionService {
             mention.setCreateTime(LocalDateTime.now());
             mentionMapper.insert(mention);
 
-            // 发送通知
+            // 通知通过 MQ 异步发送到 mars-interaction 消费
             try {
-                notificationHelper.notifyMention(actorId, actorName, postId, commentId, mentionedUserId);
+                String sourceId = postId != null ? String.valueOf(postId) : String.valueOf(commentId);
+                String sourceType = postId != null ? "mention_post" : "mention_comment";
+
+                NotificationMessage msg = new NotificationMessage(
+                        mentionedUserId, "interaction", actorName != null ? actorName : "匿名",
+                        "{\"actorId\":\"" + actorId + "\"}",
+                        sourceType, sourceId);
+                msg.setActorId(actorId);
+                msg.setPostId(postId);
+                notificationProducer.sendInteraction(msg);
             } catch (Exception ignored) {}
         }
     }

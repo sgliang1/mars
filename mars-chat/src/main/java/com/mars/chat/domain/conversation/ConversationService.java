@@ -17,6 +17,9 @@ import com.mars.chat.infrastructure.websocket.ChatWebSocketHandler;
 import com.mars.common.cache.CacheKeys;
 import com.mars.common.cache.CacheService;
 
+import java.net.URLDecoder;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -513,8 +516,8 @@ public class ConversationService {
     }
 
     private String buildDirectMetadata(Long userId, String currentUsername, String targetUserId, String targetUsername) {
-        return userId + "=" + sanitizeDirectName(currentUsername) + ";"
-                + targetUserId + "=" + sanitizeDirectName(targetUsername);
+        return userId + "=" + encodeDirectName(currentUsername) + ";"
+                + targetUserId + "=" + encodeDirectName(targetUsername);
     }
 
     private String resolveDirectPeerUserId(Conversation conversation, Long userId) {
@@ -548,7 +551,7 @@ public class ConversationService {
                 continue;
             }
             String memberId = segment.substring(0, index).trim();
-            String memberName = segment.substring(index + 1).trim();
+            String memberName = decodeDirectName(segment.substring(index + 1).trim());
             if (!String.valueOf(userId).equals(memberId) && StringUtils.hasText(memberName)) {
                 return memberName;
             }
@@ -556,11 +559,23 @@ public class ConversationService {
         return "私信";
     }
 
-    private String sanitizeDirectName(String value) {
+    private String encodeDirectName(String value) {
         if (!StringUtils.hasText(value)) {
             return "用户";
         }
-        return value.replace(';', ' ').replace('=', ' ').trim();
+        return URLEncoder.encode(value.trim(), StandardCharsets.UTF_8);
+    }
+
+    private String decodeDirectName(String encoded) {
+        if (!StringUtils.hasText(encoded)) {
+            return encoded;
+        }
+        try {
+            return URLDecoder.decode(encoded, StandardCharsets.UTF_8);
+        } catch (IllegalArgumentException e) {
+            log.debug("URL-decode direct name failed, returning raw: {}", encoded);
+            return encoded;
+        }
     }
 
     private int countMembers(Long conversationId) {

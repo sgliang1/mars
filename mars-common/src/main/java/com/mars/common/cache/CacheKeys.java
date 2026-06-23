@@ -75,6 +75,9 @@ public final class CacheKeys {
     /** 用户粉丝计数 */
     public static final String COUNT_FOLLOWERS = "mars:count:followers:";
 
+    /** 帖子浏览量计数（Redis 累积增量，定时回写 DB） */
+    public static final String COUNT_VIEWS = "mars:count:views:";
+
     // ==================== 会话相关 ====================
     /** 会话摘要列表 */
     public static final String CONV_SUMMARIES = "mars:conv:summaries:";

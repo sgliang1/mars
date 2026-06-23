@@ -23,6 +23,9 @@ public interface PostMapper extends BaseMapper<Post> {
     @Update("UPDATE post SET comment_count = #{count} WHERE id = #{postId}")
     int updateCommentCountDirect(Long postId, long count);
 
+    @Update("UPDATE post SET view_count = view_count + #{count} WHERE id = #{postId}")
+    int incrementViewCount(Long postId, long count);
+
     @Update("UPDATE post SET share_count = share_count + 1 WHERE id = #{postId}")
     int incrementShareCount(Long postId);
 

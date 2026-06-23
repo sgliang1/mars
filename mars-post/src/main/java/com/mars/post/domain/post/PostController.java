@@ -17,7 +17,6 @@ import com.mars.post.domain.post.PostService;
 import com.mars.post.domain.topic.PostTopic;
 import com.mars.post.domain.topic.PostTopicMapper;
 import com.mars.post.infrastructure.file.S3Service;
-import com.mars.post.domain.notification.NotificationHelper;
 import com.mars.common.cache.CacheKeys;
 import com.mars.common.cache.CacheService;
 import jakarta.validation.Valid;
@@ -49,13 +48,12 @@ public class PostController {
     @Autowired private PostLikeMapper postLikeMapper;
     @Autowired private PostImageMapper postImageMapper;
     @Autowired private S3Service s3Service;
-    @Autowired private NotificationHelper notificationHelper;
     @Autowired private CacheService cacheService;
     @Autowired private MentionService mentionService;
     @Autowired private com.mars.post.domain.poll.PollService pollService;
     @Autowired private com.mars.post.domain.filter.UserFilterService userFilterService;
     @Autowired private PostTopicMapper postTopicMapper;
-    @Autowired private org.springframework.jdbc.core.JdbcTemplate jdbcTemplate;
+
 
     @Value("${file.local-path}")
     private String localPath;
@@ -368,12 +366,12 @@ public class PostController {
         }
         data.put("isLiked", isLiked);
 
-        // 异步递增浏览量（不阻塞响应）
+        // 浏览量：Redis 累积计数 + 响应返回实时值（定时任务回写 DB，不破坏缓存）
         try {
-            jdbcTemplate.update("UPDATE post SET view_count = view_count + 1 WHERE id = ?", id);
-            data.put("viewCount", ((Number) data.getOrDefault("viewCount", 0)).intValue() + 1);
-            // 失效缓存，让下次请求拿到新值
-            cacheService.delete(cacheKey);
+            int baseViewCount = ((Number) data.getOrDefault("viewCount", 0)).intValue();
+            String viewCountKey = CacheKeys.key(CacheKeys.COUNT_VIEWS, id);
+            Long delta = cacheService.increment(viewCountKey);
+            data.put("viewCount", baseViewCount + (delta != null ? delta.intValue() : 1));
         } catch (Exception e) {
             log.warn("递增浏览量异常: postId={}", id, e);
         }

@@ -29,7 +29,7 @@ public class JwtUtil {
     // ==================== Access Token ====================
 
     public static String generateToken(Long userId, String username) {
-        return generateToken(userId, username, null);
+        return generateToken(userId, username, "user");
     }
 
     public static String generateToken(Long userId, String username, String role) {
