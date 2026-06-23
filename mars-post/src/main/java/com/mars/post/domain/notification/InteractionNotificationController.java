@@ -2,6 +2,7 @@ package com.mars.post.domain.notification;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.mars.common.Result;
+import com.mars.post.domain.filter.UserFilterService;
 import com.mars.post.domain.post.Post;
 import com.mars.post.domain.post.PostMapper;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -20,6 +21,9 @@ public class InteractionNotificationController {
 
     @Autowired
     private PostMapper postMapper;
+
+    @Autowired
+    private UserFilterService userFilterService;
 
     /**
      * 获取互动通知列表
@@ -61,7 +65,8 @@ public class InteractionNotificationController {
             }
         }
 
-        // 组装前端需要的格式
+        // 组装前端需要的格式（过滤 block/mute 用户的通知）
+        Set<Long> filteredIds = userFilterService.getFilteredIds(userId);
         List<Map<String, Object>> result = new ArrayList<>();
         for (Notification n : notifications) {
             Map<String, Object> item = new LinkedHashMap<>();
@@ -70,6 +75,15 @@ public class InteractionNotificationController {
 
             // 从 content JSON 解析
             Map<String, String> contentMap = parseContent(n.getContent());
+
+            // 过滤 block/mute 用户的通知
+            if (!filteredIds.isEmpty()) {
+                Long actorId = parseLong(contentMap.get("actorId"));
+                if (actorId != null && filteredIds.contains(actorId)) {
+                    continue;
+                }
+            }
+
             item.put("actorId", contentMap.getOrDefault("actorId", ""));
             item.put("actorName", n.getTitle()); // title 存的是 actorName
             item.put("actorAvatar", "");
@@ -96,7 +110,64 @@ public class InteractionNotificationController {
             result.add(item);
         }
 
-        return Result.success(result);
+        // 通知聚合：同一帖子的多个 like 合并为一条
+        return Result.success(aggregateNotifications(result));
+    }
+
+    /**
+     * 聚合同一帖子的 like 通知
+     * 同一 postId 的多个 like → 一条通知 + actorCount + actors 列表
+     */
+    private List<Map<String, Object>> aggregateNotifications(List<Map<String, Object>> items) {
+        // key: type + postId
+        Map<String, Map<String, Object>> likeGroups = new LinkedHashMap<>();
+        List<Map<String, Object>> others = new ArrayList<>();
+
+        for (Map<String, Object> item : items) {
+            String type = item.get("type") != null ? item.get("type").toString() : "";
+            String postId = item.get("postId") != null ? item.get("postId").toString() : "";
+
+            if ("like".equals(type) && !postId.isEmpty()) {
+                String groupKey = "like:" + postId;
+                Map<String, Object> existing = likeGroups.get(groupKey);
+                if (existing == null) {
+                    // 第一个 like，作为主通知
+                    Map<String, Object> group = new LinkedHashMap<>(item);
+                    group.put("actorCount", 1);
+                    List<Map<String, String>> actors = new ArrayList<>();
+                    Map<String, String> actor = new LinkedHashMap<>();
+                    actor.put("actorId", item.get("actorId") != null ? item.get("actorId").toString() : "");
+                    actor.put("actorName", item.get("actorName") != null ? item.get("actorName").toString() : "");
+                    actors.add(actor);
+                    group.put("actors", actors);
+                    likeGroups.put(groupKey, group);
+                } else {
+                    // 追加到已有组
+                    int count = (int) existing.get("actorCount") + 1;
+                    existing.put("actorCount", count);
+                    @SuppressWarnings("unchecked")
+                    List<Map<String, String>> actors = (List<Map<String, String>>) existing.get("actors");
+                    Map<String, String> actor = new LinkedHashMap<>();
+                    actor.put("actorId", item.get("actorId") != null ? item.get("actorId").toString() : "");
+                    actor.put("actorName", item.get("actorName") != null ? item.get("actorName").toString() : "");
+                    actors.add(actor);
+                    // 更新时间（取最新的）
+                    existing.put("createdAt", item.get("createdAt"));
+                }
+            } else {
+                others.add(item);
+            }
+        }
+
+        // 合并：like 聚合组 + 其他通知，按时间排序
+        List<Map<String, Object>> merged = new ArrayList<>(likeGroups.values());
+        merged.addAll(others);
+        merged.sort((a, b) -> {
+            String ta = a.get("createdAt") != null ? a.get("createdAt").toString() : "";
+            String tb = b.get("createdAt") != null ? b.get("createdAt").toString() : "";
+            return tb.compareTo(ta);
+        });
+        return merged;
     }
 
     /**

@@ -1,7 +1,6 @@
 package com.mars.post.infrastructure.file;
 
 import com.mars.common.Result;
-import com.mars.post.infrastructure.file.S3Service;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.util.FileCopyUtils;
@@ -37,36 +36,26 @@ public class FileController {
     public Result<String> upload(@RequestParam("file") MultipartFile file,
                                  @RequestParam(value = "scene", defaultValue = "post") String scene,
                                  @RequestHeader(value = "X-User-Id", required = false) String userIdStr) {
-        try {
-            validateFile(file);
+        validateFile(file);
 
-            String fileName = buildStorageKey(file, scene, userIdStr);
-            String r2Url = s3Service.uploadFileWithSpecifiedName(file, fileName);
+        String fileName = buildStorageKey(file, scene, userIdStr);
+        String r2Url = s3Service.uploadFileWithSpecifiedName(file, fileName);
 
-            Path localTargetPath = resolveLocalTarget(fileName);
-            File localDest = localTargetPath.toFile();
-            File parent = localDest.getParentFile();
-            if (parent != null && !parent.exists()) {
-                parent.mkdirs();
-            }
-
-            try (InputStream in = file.getInputStream();
-                 FileOutputStream out = new FileOutputStream(localDest)) {
-                FileCopyUtils.copy(in, out);
-            } catch (Exception ex) {
-                System.err.println("本地备份异常(不影响主流程): " + ex.getMessage());
-            }
-
-            Result<String> result = new Result<>();
-            result.setCode(200);
-            result.setMsg("上传成功");
-            result.setData(r2Url);
-            return result;
-
-        } catch (Exception e) {
-            e.printStackTrace();
-            return Result.fail("上传失败: " + e.getMessage());
+        Path localTargetPath = resolveLocalTarget(fileName);
+        File localDest = localTargetPath.toFile();
+        File parent = localDest.getParentFile();
+        if (parent != null && !parent.exists()) {
+            parent.mkdirs();
         }
+
+        try (InputStream in = file.getInputStream();
+             FileOutputStream out = new FileOutputStream(localDest)) {
+            FileCopyUtils.copy(in, out);
+        } catch (Exception ex) {
+            // 本地备份失败不影响主流程
+        }
+
+        return Result.success(r2Url);
     }
 
     private void validateFile(MultipartFile file) {

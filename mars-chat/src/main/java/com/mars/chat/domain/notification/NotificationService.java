@@ -20,7 +20,6 @@ public class NotificationService {
     private NotificationMapper notificationMapper;
 
     public List<Map<String, Object>> listNotifications(Long userId) {
-        ensureDefaultNotifications(userId);
         return selectNotifications(userId, true).stream()
                 .map(this::toMap)
                 .toList();
@@ -28,7 +27,6 @@ public class NotificationService {
 
     @Transactional
     public Map<String, Object> markRead(Long userId, Long id) {
-        ensureDefaultNotifications(userId);
         Notification notification = requireNotification(userId, id);
         notification.setReadStatus(1);
         notification.setReadAt(LocalDateTime.now());
@@ -38,7 +36,6 @@ public class NotificationService {
 
     @Transactional
     public int markAllRead(Long userId) {
-        ensureDefaultNotifications(userId);
         return notificationMapper.markAllReadByUserId(userId);
     }
 
@@ -51,7 +48,6 @@ public class NotificationService {
     }
 
     public String latestPreview(Long userId) {
-        ensureDefaultNotifications(userId);
         Notification latest = selectLatestNotification(userId);
         if (latest == null) {
             return "\u7cfb\u7edf\u901a\u77e5\u4f1a\u96c6\u4e2d\u5c55\u793a\u5728\u8fd9\u91cc\uff0c\u8fdb\u5165\u540e\u4f1a\u6e05\u7a7a\u672a\u8bfb\u3002";
@@ -60,7 +56,6 @@ public class NotificationService {
     }
 
     public List<Map<String, Object>> listConversationMessages(Long userId) {
-        ensureDefaultNotifications(userId);
         return selectNotifications(userId, false).stream()
                 .map(this::toConversationMessage)
                 .toList();

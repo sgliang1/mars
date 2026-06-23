@@ -1,0 +1,54 @@
+package com.mars.gateway.filter;
+
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.cloud.gateway.filter.GatewayFilterChain;
+import org.springframework.cloud.gateway.filter.GlobalFilter;
+import org.springframework.core.Ordered;
+import org.springframework.http.server.reactive.ServerHttpRequest;
+import org.springframework.stereotype.Component;
+import org.springframework.web.server.ServerWebExchange;
+import reactor.core.publisher.Mono;
+
+import java.net.URI;
+
+/**
+ * 网关访问日志过滤器
+ * 记录每个请求的 method、path、status、耗时、userId、traceId
+ * 优先级低于 AuthFilter（Order=0），确保日志在鉴权之后记录
+ */
+@Slf4j
+@Component
+public class AccessLogFilter implements GlobalFilter, Ordered {
+
+    @Override
+    public Mono<Void> filter(ServerWebExchange exchange, GatewayFilterChain chain) {
+        long startTime = System.currentTimeMillis();
+        ServerHttpRequest request = exchange.getRequest();
+        String method = request.getMethod().name();
+        URI uri = request.getURI();
+        String path = uri.getPath();
+        String userId = request.getHeaders().getFirst("X-User-Id");
+        String clientIp = request.getRemoteAddress() != null
+                ? request.getRemoteAddress().getAddress().getHostAddress() : "unknown";
+
+        return chain.filter(exchange).then(Mono.fromRunnable(() -> {
+            long duration = System.currentTimeMillis() - startTime;
+            int statusCode = exchange.getResponse().getStatusCode() != null
+                    ? exchange.getResponse().getStatusCode().value() : 0;
+
+            log.info("ACCESS | {} {} | status={} | duration={}ms | userId={} | ip={}",
+                    method, path, statusCode, duration,
+                    userId != null ? userId : "-", clientIp);
+
+            // 慢请求告警
+            if (duration > 3000) {
+                log.warn("SLOW_REQUEST | {} {} | duration={}ms | userId={}", method, path, duration, userId);
+            }
+        }));
+    }
+
+    @Override
+    public int getOrder() {
+        return 0; // 在 AuthFilter(-1) 之后执行
+    }
+}

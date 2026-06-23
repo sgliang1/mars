@@ -1,6 +1,9 @@
 package com.mars.chat.domain.room;
 
 import com.mars.common.Result;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
@@ -8,81 +11,52 @@ import java.util.List;
 import java.util.Map;
 
 @RestController
-@RequestMapping("/mars-chat/rooms")
+@RequestMapping("/rooms")
+@Tag(name = "聊天室", description = "公开聊天室管理")
 public class ChatRoomController {
 
     @Autowired
     private ChatRoomService chatRoomService;
 
     @GetMapping
+    @Operation(summary = "聊天室列表")
     public Result<List<Map<String, Object>>> list(@RequestHeader("X-User-Id") String userIdStr) {
-        try {
-            return Result.success(chatRoomService.listRooms(parseUserId(userIdStr)));
-        } catch (Exception e) {
-            e.printStackTrace();
-            return Result.fail("Failed to load rooms");
-        }
+        return Result.success(chatRoomService.listRooms(Long.parseLong(userIdStr)));
     }
 
     @GetMapping("/{roomId}")
-    public Result<Map<String, Object>> detail(@PathVariable("roomId") Long roomId,
+    @Operation(summary = "聊天室详情")
+    public Result<Map<String, Object>> detail(@Parameter(description = "房间ID") @PathVariable("roomId") Long roomId,
                                               @RequestHeader("X-User-Id") String userIdStr) {
-        try {
-            return Result.success(chatRoomService.getRoom(parseUserId(userIdStr), roomId));
-        } catch (IllegalArgumentException e) {
-            return Result.fail(e.getMessage());
-        } catch (Exception e) {
-            e.printStackTrace();
-            return Result.fail("Failed to load room");
-        }
+        return Result.success(chatRoomService.getRoom(Long.parseLong(userIdStr), roomId));
     }
 
     @PostMapping
+    @Operation(summary = "创建聊天室")
     public Result<Map<String, Object>> create(@RequestBody Map<String, Object> body,
                                               @RequestHeader("X-User-Id") String userIdStr,
                                               @RequestHeader(value = "X-Username", required = false) String username) {
-        try {
-            return Result.success(chatRoomService.createRoom(
-                    parseUserId(userIdStr),
-                    username,
-                    value(body, "name"),
-                    value(body, "description"),
-                    value(body, "icon")
-            ));
-        } catch (Exception e) {
-            e.printStackTrace();
-            return Result.fail("Failed to create room");
-        }
+        return Result.success(chatRoomService.createRoom(
+                Long.parseLong(userIdStr),
+                username,
+                value(body, "name"),
+                value(body, "description"),
+                value(body, "icon")
+        ));
     }
 
     @PostMapping("/{roomId}/join")
-    public Result<Map<String, Object>> join(@PathVariable("roomId") Long roomId,
+    @Operation(summary = "加入聊天室")
+    public Result<Map<String, Object>> join(@Parameter(description = "房间ID") @PathVariable("roomId") Long roomId,
                                             @RequestHeader("X-User-Id") String userIdStr) {
-        try {
-            return Result.success(chatRoomService.joinRoom(parseUserId(userIdStr), roomId));
-        } catch (IllegalArgumentException e) {
-            return Result.fail(e.getMessage());
-        } catch (Exception e) {
-            e.printStackTrace();
-            return Result.fail("Failed to join room");
-        }
+        return Result.success(chatRoomService.joinRoom(Long.parseLong(userIdStr), roomId));
     }
 
     @PostMapping("/{roomId}/leave")
-    public Result<Map<String, Object>> leave(@PathVariable("roomId") Long roomId,
+    @Operation(summary = "离开聊天室")
+    public Result<Map<String, Object>> leave(@Parameter(description = "房间ID") @PathVariable("roomId") Long roomId,
                                              @RequestHeader("X-User-Id") String userIdStr) {
-        try {
-            return Result.success(chatRoomService.leaveRoom(parseUserId(userIdStr), roomId));
-        } catch (IllegalArgumentException e) {
-            return Result.fail(e.getMessage());
-        } catch (Exception e) {
-            e.printStackTrace();
-            return Result.fail("Failed to leave room");
-        }
-    }
-
-    private Long parseUserId(String userIdStr) {
-        return Long.parseLong(userIdStr);
+        return Result.success(chatRoomService.leaveRoom(Long.parseLong(userIdStr), roomId));
     }
 
     private String value(Map<String, Object> body, String key) {

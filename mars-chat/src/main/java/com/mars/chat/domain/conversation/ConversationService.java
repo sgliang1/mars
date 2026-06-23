@@ -7,17 +7,23 @@ import com.mars.chat.domain.message.ConversationMessage;
 import com.mars.chat.domain.conversation.ConversationMapper;
 import com.mars.chat.domain.conversation.ConversationMemberMapper;
 import com.mars.chat.domain.message.ConversationMessageMapper;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 import com.mars.chat.domain.notification.NotificationService;
+import com.mars.chat.infrastructure.websocket.ChatWebSocketHandler;
+import com.mars.common.cache.CacheKeys;
+import com.mars.common.cache.CacheService;
 
 import java.time.LocalDateTime;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
+@Slf4j
 @Service
 public class ConversationService {
 
@@ -38,11 +44,19 @@ public class ConversationService {
     @Autowired
     private NotificationService notificationService;
 
+    @Autowired
+    private CacheService cacheService;
+
+    @Autowired
+    private ChatWebSocketHandler chatWebSocketHandler;
+
     public List<Map<String, Object>> listSummaries(Long userId, String scope) {
+        log.debug("listSummaries userId={} scope={}", userId, scope);
         ensureDefaultConversations(userId);
 
         List<ConversationMember> members = conversationMemberMapper.selectList(new LambdaQueryWrapper<ConversationMember>()
                 .eq(ConversationMember::getUserId, userId));
+        log.debug("listSummaries: found {} members for userId={}", members.size(), userId);
         if (members.isEmpty()) {
             return List.of();
         }
@@ -65,21 +79,19 @@ public class ConversationService {
                 .orderByDesc(Conversation::getId);
 
         if ("session".equals(scope)) {
-            // 像微信一样平铺：私信、群聊、系统通知全部展示在消息列表
             query.in(Conversation::getType, TYPE_DIRECT, TYPE_GROUP, TYPE_SYSTEM);
         } else if ("notification".equals(scope)) {
             query.eq(Conversation::getType, TYPE_SYSTEM);
         } else {
-            // 默认情况下也不返回公共频道
             query.ne(Conversation::getType, TYPE_PUBLIC);
         }
 
         List<Conversation> conversations = conversationMapper.selectList(query);
+        log.debug("listSummaries: found {} conversations for scope={}", conversations.size(), scope);
         if (conversations.isEmpty()) {
             return List.of();
         }
 
-        // 批量预加载 memberCount 和 latestPreview，消除 N+1
         List<Long> convIds = conversations.stream().map(Conversation::getId).toList();
         Map<Long, Integer> memberCountMap = new LinkedHashMap<>();
         conversationMemberMapper.batchCountMembers(convIds).forEach(row ->
@@ -88,6 +100,7 @@ public class ConversationService {
         conversationMessageMapper.batchLatestMessages(convIds).forEach(msg -> {
             previewMap.putIfAbsent(msg.getConversationId(), msg.getContent());
         });
+        log.debug("listSummaries: memberCountMap.size={} previewMap.size={}", memberCountMap.size(), previewMap.size());
 
         return conversations.stream()
                 .map(conversation -> toSummaryMap(conversation, memberMap.get(conversation.getId()), userId, memberCountMap, previewMap))
@@ -124,6 +137,16 @@ public class ConversationService {
         String directMetadata = buildDirectMetadata(userId, safeCurrentName, safeTargetId, safeTargetName);
         String defaultDescription = "进入私信后可直接继续对话。";
         LocalDateTime now = LocalDateTime.now();
+
+        // 检查是否被对方拉黑
+        Long targetId = parseLongOrNull(safeTargetId);
+        if (targetId != null && !targetId.equals(userId)) {
+            Set<Long> blockedIds = cacheService.setMembers(CacheKeys.key(CacheKeys.RELATION_BLOCK_IDS, targetId));
+            if (blockedIds != null && blockedIds.contains(userId)) {
+                throw new IllegalArgumentException("对方已屏蔽你，无法发起私信");
+            }
+        }
+
         Conversation conversation = ensureConversation(
                 TYPE_DIRECT,
                 buildDirectBizKey(userId, safeTargetId),
@@ -147,7 +170,6 @@ public class ConversationService {
         }
 
         ensureMember(conversation.getId(), userId);
-        Long targetId = parseLongOrNull(safeTargetId);
         if (targetId != null && !targetId.equals(userId)) {
             ensureMember(conversation.getId(), targetId);
         }
@@ -211,7 +233,7 @@ public class ConversationService {
     }
 
     @Transactional
-    public Map<String, Object> sendMessage(Long userId, Long conversationId, String content, String senderName) {
+    public Map<String, Object> sendMessage(Long userId, Long conversationId, String content, String senderName, int messageType) {
         String text = content == null ? "" : content.trim();
         if (!StringUtils.hasText(text)) {
             throw new IllegalArgumentException("Message content cannot be empty");
@@ -223,13 +245,32 @@ public class ConversationService {
         }
 
         requireMember(conversationId, userId);
+
+        // 对 direct 类型会话检查消息权限
+        if (TYPE_DIRECT.equals(conversation.getType())) {
+            Long peerUserId = parseLongOrNull(resolveDirectPeerUserId(conversation, userId));
+            if (peerUserId != null) {
+                // 检查是否被对方拉黑
+                Set<Long> blockedIds = cacheService.setMembers(CacheKeys.key(CacheKeys.RELATION_BLOCK_IDS, peerUserId));
+                if (blockedIds != null && blockedIds.contains(userId)) {
+                    throw new IllegalArgumentException("对方已屏蔽你，无法发送消息");
+                }
+                // 检查对方是否设置了禁止私信
+                String msgSettingKey = CacheKeys.relationKey(CacheKeys.RELATION_MSG_SETTING, peerUserId, userId);
+                Object canMessage = cacheService.get(msgSettingKey);
+                if (canMessage != null && "0".equals(canMessage.toString())) {
+                    throw new IllegalArgumentException("对方已关闭私信功能");
+                }
+            }
+        }
+
         LocalDateTime now = LocalDateTime.now();
         ConversationMessage message = new ConversationMessage();
         message.setConversationId(conversationId);
         message.setSenderId(userId);
         message.setSenderName(StringUtils.hasText(senderName) ? senderName : "我");
         message.setContent(text);
-        message.setMessageType(0);
+        message.setMessageType(messageType);
         message.setDeliveryStatus("sent");
         message.setCreatedAt(now);
         conversationMessageMapper.insert(message);
@@ -251,6 +292,13 @@ public class ConversationService {
                 member.setUnreadCount(unreadCount + 1);
             }
             conversationMemberMapper.updateById(member);
+        }
+
+        // WebSocket 实时推送：通知会话成员
+        try {
+            chatWebSocketHandler.notifyNewMessage(conversationId, message);
+        } catch (Exception e) {
+            log.warn("WebSocket 推送失败: conversationId={}, error={}", conversationId, e.getMessage());
         }
 
         Map<String, Object> data = new LinkedHashMap<>();

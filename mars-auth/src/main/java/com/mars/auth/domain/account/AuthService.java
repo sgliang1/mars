@@ -2,6 +2,7 @@ package com.mars.auth.domain.account;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.mars.common.Result;
+import com.mars.common.model.User;
 import com.mars.common.util.JwtUtil;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
@@ -12,9 +13,6 @@ public class AuthService {
 
     @Autowired
     private UserMapper userMapper;
-
-    @Autowired
-    private UserProfileMapper userProfileMapper;
 
     private final BCryptPasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
 
@@ -42,84 +40,22 @@ public class AuthService {
     }
 
     public Result register(User user) {
+        // 参数校验
+        if (user.getUsername() == null || user.getUsername().length() < 3 || user.getUsername().length() > 20) {
+            return Result.fail("用户名长度需为 3-20 个字符");
+        }
+        if (user.getPassword() == null || user.getPassword().length() < 6) {
+            return Result.fail("密码长度不能少于 6 位");
+        }
+        if (user.getEmail() == null || !user.getEmail().matches("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$")) {
+            return Result.fail("邮箱格式不正确");
+        }
+
         User exist = userMapper.selectOne(new LambdaQueryWrapper<User>().eq(User::getUsername, user.getUsername()));
         if (exist != null) return Result.fail("用户名已存在");
 
         user.setPassword(passwordEncoder.encode(user.getPassword()));
         userMapper.insert(user);
         return Result.successMessage("注册成功");
-    }
-
-    public Result update(Long userId, UpdateUserRequest request) {
-        if (request.getUsername() != null) {
-            User exist = userMapper.selectOne(new LambdaQueryWrapper<User>()
-                    .eq(User::getUsername, request.getUsername())
-                    .ne(User::getId, userId));
-            if (exist != null) {
-                return Result.fail("用户名已存在");
-            }
-        }
-
-        User user = new User();
-        user.setId(userId);
-        user.setUsername(request.getUsername());
-        user.setEmail(request.getEmail());
-        userMapper.updateById(user);
-
-        return Result.successMessage("更新成功");
-    }
-
-    public Result updateProfile(UpdateProfileRequest request) {
-        if (request.getUserId() == null) {
-            return Result.fail("用户ID不能为空");
-        }
-
-        if (request.getUsername() != null && !request.getUsername().isBlank()) {
-            User exist = userMapper.selectOne(new LambdaQueryWrapper<User>()
-                    .eq(User::getUsername, request.getUsername())
-                    .ne(User::getId, request.getUserId()));
-            if (exist != null) {
-                return Result.fail("昵称已被占用");
-            }
-            User user = new User();
-            user.setId(request.getUserId());
-            user.setUsername(request.getUsername());
-            userMapper.updateById(user);
-        }
-
-        UserProfile profile = userProfileMapper.selectById(request.getUserId());
-        final boolean isNewProfile = (profile == null);
-        if (isNewProfile) {
-            profile = new UserProfile();
-            profile.setUserId(request.getUserId());
-        }
-
-        boolean needUpdateProfile = false;
-        if (request.getBio() != null) {
-            profile.setBio(request.getBio());
-            needUpdateProfile = true;
-        }
-        if (request.getAvatarUrl() != null) {
-            profile.setAvatarUrl(request.getAvatarUrl());
-            needUpdateProfile = true;
-        }
-        if (request.getGender() != null) {
-            profile.setGender(request.getGender());
-            needUpdateProfile = true;
-        }
-        if (request.getBirthday() != null) {
-            profile.setBirthday(request.getBirthday());
-            needUpdateProfile = true;
-        }
-
-        if (needUpdateProfile) {
-            if (isNewProfile) {
-                userProfileMapper.insert(profile);
-            } else {
-                userProfileMapper.updateById(profile);
-            }
-        }
-
-        return Result.successMessage("资料更新成功");
     }
 }

@@ -36,17 +36,26 @@ public class JwtUtil {
     }
 
     /**
-     * 生成 Token
+     * 生成 Token（不含角色）
      */
     public static String generateToken(Long userId, String username) {
-        return Jwts.builder()
+        return generateToken(userId, username, null);
+    }
+
+    /**
+     * 生成 Token（含角色）
+     */
+    public static String generateToken(Long userId, String username, String role) {
+        var builder = Jwts.builder()
                 .subject(username)
                 .claim("userId", userId)
                 .claim("username", username)
                 .issuedAt(new Date())
-                .expiration(new Date(System.currentTimeMillis() + EXPIRATION_TIME))
-                .signWith(KEY)
-                .compact();
+                .expiration(new Date(System.currentTimeMillis() + EXPIRATION_TIME));
+        if (role != null && !role.isBlank()) {
+            builder.claim("role", role);
+        }
+        return builder.signWith(KEY).compact();
     }
 
     /**

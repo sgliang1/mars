@@ -1,7 +1,9 @@
 package com.mars.chat.domain.notification;
 
-import com.mars.chat.domain.notification.NotificationService;
 import com.mars.common.Result;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
@@ -10,51 +12,34 @@ import java.util.List;
 import java.util.Map;
 
 @RestController
-@RequestMapping("/mars-chat/notifications")
+@RequestMapping("/notifications")
+@Tag(name = "系统通知", description = "系统/安全/版本通知")
 public class NotificationController {
 
     @Autowired
     private NotificationService notificationService;
 
     @GetMapping
+    @Operation(summary = "系统通知列表")
     public Result<List<Map<String, Object>>> list(@RequestHeader("X-User-Id") String userIdStr,
                                                   @RequestParam(value = "page", defaultValue = "1") int page,
                                                   @RequestParam(value = "size", defaultValue = "50") int size) {
-        try {
-            return Result.success(notificationService.listNotifications(parseUserId(userIdStr)));
-        } catch (Exception e) {
-            e.printStackTrace();
-            return Result.fail("Failed to load notifications");
-        }
+        return Result.success(notificationService.listNotifications(Long.parseLong(userIdStr)));
     }
 
     @PostMapping("/{id}/read")
-    public Result<Map<String, Object>> markRead(@PathVariable("id") Long id,
+    @Operation(summary = "标记通知已读")
+    public Result<Map<String, Object>> markRead(@Parameter(description = "通知ID") @PathVariable("id") Long id,
                                                 @RequestHeader("X-User-Id") String userIdStr) {
-        try {
-            return Result.success(notificationService.markRead(parseUserId(userIdStr), id));
-        } catch (IllegalArgumentException e) {
-            return Result.fail(e.getMessage());
-        } catch (Exception e) {
-            e.printStackTrace();
-            return Result.fail("Failed to update notification");
-        }
+        return Result.success(notificationService.markRead(Long.parseLong(userIdStr), id));
     }
 
     @PostMapping("/read-all")
+    @Operation(summary = "全部标记已读")
     public Result<Map<String, Object>> markAllRead(@RequestHeader("X-User-Id") String userIdStr) {
-        try {
-            int count = notificationService.markAllRead(parseUserId(userIdStr));
-            Map<String, Object> data = new LinkedHashMap<>();
-            data.put("updatedCount", count);
-            return Result.success(data);
-        } catch (Exception e) {
-            e.printStackTrace();
-            return Result.fail("Failed to mark notifications read");
-        }
-    }
-
-    private Long parseUserId(String userIdStr) {
-        return Long.parseLong(userIdStr);
+        int count = notificationService.markAllRead(Long.parseLong(userIdStr));
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("updatedCount", count);
+        return Result.success(data);
     }
 }

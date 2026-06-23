@@ -31,8 +31,14 @@ public class AuthFilter implements GlobalFilter, Ordered {
         ServerHttpRequest request = exchange.getRequest();
         String path = request.getURI().getPath();
 
-        // 1. 白名单放行：登录和注册接口不需要 Token
-        if (path.contains("/mars-auth/login") || path.contains("/mars-auth/register") || path.contains("/mars-chat/ws")) {
+        // 0. OPTIONS 预检请求直接放行，确保 CorsWebFilter 能正常注入 CORS 响应头
+        if (request.getMethod() == org.springframework.http.HttpMethod.OPTIONS) {
+            return chain.filter(exchange);
+        }
+
+        // 1. 白名单放行：公开接口不需要 Token
+        if (path.contains("/mars-auth/login") || path.contains("/mars-auth/register")
+                || path.contains("/mars-admin/admin/auth/login")) {
             return chain.filter(exchange);
         }
 
@@ -62,6 +68,7 @@ public class AuthFilter implements GlobalFilter, Ordered {
 
             String userId = claims.get("userId").toString();
             String username = claims.get("username").toString();
+            String role = claims.get("role") != null ? claims.get("role").toString() : "";
 
             // 对用户名进行 URL 编码，防止 Header 中传递中文导致乱码或报错
             String encodedUsername = URLEncoder.encode(username, StandardCharsets.UTF_8.name());
@@ -70,6 +77,7 @@ public class AuthFilter implements GlobalFilter, Ordered {
             ServerHttpRequest mutatedRequest = request.mutate()
                     .header("X-User-Id", userId)
                     .header("X-User-Name", encodedUsername)
+                    .header("X-User-Role", role)
                     .build();
 
             return chain.filter(exchange.mutate().request(mutatedRequest).build());
@@ -81,11 +89,14 @@ public class AuthFilter implements GlobalFilter, Ordered {
     }
 
     /**
-     * 返回 401 未授权响应
+     * 返回 401 未授权响应，同时附加 CORS 头以防止浏览器拦截错误响应
      */
     private Mono<Void> unAuthorized(ServerWebExchange exchange) {
         ServerHttpResponse response = exchange.getResponse();
         response.setStatusCode(HttpStatus.UNAUTHORIZED);
+        response.getHeaders().add("Access-Control-Allow-Origin",
+                exchange.getRequest().getHeaders().getOrigin());
+        response.getHeaders().add("Access-Control-Allow-Credentials", "true");
         return response.setComplete();
     }
 

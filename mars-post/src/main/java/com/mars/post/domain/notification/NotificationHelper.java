@@ -1,11 +1,13 @@
 package com.mars.post.domain.notification;
 
+import com.mars.common.mq.NotificationMessage;
+import com.mars.post.domain.filter.UserFilterService;
 import com.mars.post.domain.post.Post;
 import com.mars.post.domain.post.PostMapper;
+import com.mars.post.mq.NotificationProducer;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
-import java.time.LocalDateTime;
 import com.mars.common.model.Notification;
 
 @Component
@@ -17,62 +19,75 @@ public class NotificationHelper {
     @Autowired
     private PostMapper postMapper;
 
+    @Autowired
+    private NotificationProducer notificationProducer;
+
+    @Autowired
+    private UserFilterService userFilterService;
+
     /**
-     * 创建点赞通知
-     * @param actorId 点赞者ID
-     * @param actorName 点赞者用户名
-     * @param postId 帖子ID
+     * 创建点赞通知（MQ 异步写入）
      */
     public void notifyLike(Long actorId, String actorName, Long postId) {
         Post post = postMapper.selectById(postId);
         if (post == null || post.getUserId().equals(actorId)) {
-            return; // 帖子不存在或自己给自己点赞，不通知
+            return;
+        }
+        // 被拉黑时不发送通知
+        if (userFilterService.isFiltered(post.getUserId(), actorId)) {
+            return;
         }
 
-        Notification n = new Notification();
-        n.setUserId(post.getUserId());
-        n.setCategory("interaction");
-        n.setTitle(truncate(actorName, 128));
-        n.setContent(buildContentJson(actorId, postId, post.getTitle(), null));
-        n.setSourceType("like");
-        n.setSourceId(String.valueOf(postId));
-        n.setReadStatus(0);
-        n.setCreatedAt(LocalDateTime.now());
-        notificationMapper.insert(n);
+        NotificationMessage msg = new NotificationMessage(
+                post.getUserId(), "interaction", truncate(actorName, 128),
+                buildContentJson(actorId, postId, post.getTitle(), null),
+                "like", String.valueOf(postId));
+        notificationProducer.sendInteraction(msg);
     }
 
     /**
-     * 创建评论通知
-     * @param actorId 评论者ID
-     * @param actorName 评论者用户名
-     * @param postId 帖子ID
-     * @param commentContent 评论内容
+     * 创建评论通知（MQ 异步写入）
      */
     public void notifyComment(Long actorId, String actorName, Long postId, String commentContent) {
         Post post = postMapper.selectById(postId);
         if (post == null || post.getUserId().equals(actorId)) {
-            return; // 帖子不存在或自己评论自己，不通知
+            return;
+        }
+        // 被拉黑时不发送通知
+        if (userFilterService.isFiltered(post.getUserId(), actorId)) {
+            return;
         }
 
-        Notification n = new Notification();
-        n.setUserId(post.getUserId());
-        n.setCategory("interaction");
-        n.setTitle(truncate(actorName, 128));
-        n.setContent(buildContentJson(actorId, postId, post.getTitle(), truncate(commentContent, 60)));
-        n.setSourceType("comment");
-        n.setSourceId(String.valueOf(postId));
-        n.setReadStatus(0);
-        n.setCreatedAt(LocalDateTime.now());
-        notificationMapper.insert(n);
+        NotificationMessage msg = new NotificationMessage(
+                post.getUserId(), "interaction", truncate(actorName, 128),
+                buildContentJson(actorId, postId, post.getTitle(), truncate(commentContent, 60)),
+                "comment", String.valueOf(postId));
+        notificationProducer.sendInteraction(msg);
     }
 
     /**
-     * 创建关注通知
-     * @param followerId 关注者ID
-     * @param followerName 关注者用户名
-     * @param followedId 被关注者ID
+     * 创建@提及通知（MQ 异步写入）
      */
-    public void notifyFollow(Long followerId, String followerName, Long followedId) {
+    public void notifyMention(Long actorId, String actorName, Long postId, Long commentId, Long mentionedUserId) {
+        // 被拉黑时不发送通知
+        if (userFilterService.isFiltered(mentionedUserId, actorId)) {
+            return;
+        }
+        String sourceId = postId != null ? String.valueOf(postId) : String.valueOf(commentId);
+        String sourceType = postId != null ? "mention_post" : "mention_comment";
+
+        NotificationMessage msg = new NotificationMessage(
+                mentionedUserId, "interaction", truncate(actorName, 128),
+                buildContentJson(actorId, postId, null, null),
+                sourceType, sourceId);
+        notificationProducer.sendInteraction(msg);
+    }
+
+    /**
+     * 创建关注通知（直接写入，关注操作在 mars-user 服务中）
+     * 此方法供需要同步通知的场景使用
+     */
+    public void notifyFollowDirect(Long followerId, String followerName, Long followedId) {
         if (followerId.equals(followedId)) {
             return;
         }
@@ -85,7 +100,7 @@ public class NotificationHelper {
         n.setSourceType("follow");
         n.setSourceId(null);
         n.setReadStatus(0);
-        n.setCreatedAt(LocalDateTime.now());
+        n.setCreatedAt(java.time.LocalDateTime.now());
         notificationMapper.insert(n);
     }
 

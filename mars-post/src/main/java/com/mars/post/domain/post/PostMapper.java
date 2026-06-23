@@ -16,4 +16,19 @@ public interface PostMapper extends BaseMapper<Post> {
 
     @Update("UPDATE post SET comment_count = comment_count + 1 WHERE id = #{postId}")
     int incrementCommentCount(Long postId);
+
+    @Update("UPDATE post SET like_count = #{count} WHERE id = #{postId}")
+    int updateLikeCountDirect(Long postId, long count);
+
+    @Update("UPDATE post SET comment_count = #{count} WHERE id = #{postId}")
+    int updateCommentCountDirect(Long postId, long count);
+
+    @Update("UPDATE post SET share_count = share_count + 1 WHERE id = #{postId}")
+    int incrementShareCount(Long postId);
+
+    @Update("UPDATE post SET is_pinned = #{pinned}, pinned_at = #{pinnedAt} WHERE id = #{postId}")
+    int updatePinStatus(Long postId, Integer pinned, java.time.LocalDateTime pinnedAt);
+
+    @Update("UPDATE post SET is_featured = #{featured} WHERE id = #{postId}")
+    int updateFeatureStatus(Long postId, Integer featured);
 }

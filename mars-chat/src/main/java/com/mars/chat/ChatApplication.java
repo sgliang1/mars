@@ -11,7 +11,7 @@ import org.springframework.context.annotation.ComponentScan;
 // 1. 扫描 common 包，确保能注�?JwtUtil, Result, GlobalExceptionHandler 等通用组件
 @ComponentScan(basePackages = {"com.mars.chat", "com.mars.common"})
 // 2. 扫描 MyBatis Mapper 接口
-@MapperScan("com.mars.chat")
+@MapperScan({"com.mars.chat", "com.mars.common.push"})
 public class ChatApplication {
 
     public static void main(String[] args) {

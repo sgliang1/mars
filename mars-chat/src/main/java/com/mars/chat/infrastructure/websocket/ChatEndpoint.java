@@ -28,9 +28,13 @@ import java.util.*;
 import java.util.concurrent.*;
 import java.util.stream.Collectors;
 
+/**
+ * @deprecated 已迁移到 ChatWebSocketHandler (Spring WebSocket API)，兼容 Spring Cloud Gateway 代理。
+ * 保留此文件作为参考，不再注册为 Bean 或 WebSocket 端点。
+ */
 @Slf4j
-@Component
-@ServerEndpoint(value = "/mars-chat/ws")
+// @Component — disabled, replaced by ChatWebSocketHandler
+// @ServerEndpoint — disabled, no ServerEndpointExporter bean
 public class ChatEndpoint {
 
     private static final String PUBLIC_CHANNEL_BIZ_KEY = "public-lobby";

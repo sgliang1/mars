@@ -16,8 +16,12 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
+
 @RestController
-@RequestMapping("/mars-chat/history")
+@RequestMapping("/history")
+@Tag(name = "聊天历史", description = "公共频道历史消息")
 public class ChatHistoryController {
 
     private static final String PUBLIC_CHANNEL_BIZ_KEY = "public-lobby";
@@ -32,6 +36,7 @@ public class ChatHistoryController {
     private ConversationMapper conversationMapper;
 
     @GetMapping("/recent")
+    @Operation(summary = "最近公共频道消息")
     public Result<List<Map<String, Object>>> recent(
             @RequestParam(value = "limit", defaultValue = "40") Integer limit) {
         int safeLimit = Math.min(Math.max(limit, 1), 100);

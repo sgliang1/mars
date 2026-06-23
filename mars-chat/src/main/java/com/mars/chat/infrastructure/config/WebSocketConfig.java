@@ -1,20 +1,22 @@
 package com.mars.chat.infrastructure.config;
 
-import com.mars.chat.infrastructure.websocket.ChatEndpoint;
-import org.springframework.context.ApplicationContext;
-import org.springframework.context.annotation.Bean;
+import com.mars.chat.infrastructure.websocket.ChatWebSocketHandler;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.web.socket.server.standard.ServerEndpointExporter;
+import org.springframework.web.socket.config.annotation.EnableWebSocket;
+import org.springframework.web.socket.config.annotation.WebSocketConfigurer;
+import org.springframework.web.socket.config.annotation.WebSocketHandlerRegistry;
 
 @Configuration
-public class WebSocketConfig {
+@EnableWebSocket
+public class WebSocketConfig implements WebSocketConfigurer {
 
-    public WebSocketConfig(ApplicationContext context) {
-        ChatEndpoint.setApplicationContext(context);
-    }
+    @Autowired
+    private ChatWebSocketHandler chatWebSocketHandler;
 
-    @Bean
-    public ServerEndpointExporter serverEndpointExporter() {
-        return new ServerEndpointExporter();
+    @Override
+    public void registerWebSocketHandlers(WebSocketHandlerRegistry registry) {
+        registry.addHandler(chatWebSocketHandler, "/ws")
+                .setAllowedOrigins("*");
     }
 }
