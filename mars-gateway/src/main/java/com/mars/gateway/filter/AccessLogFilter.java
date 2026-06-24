@@ -15,7 +15,8 @@ import java.net.URI;
 /**
  * 网关访问日志过滤器
  * 记录每个请求的 method、path、status、耗时、userId、traceId
- * 优先级低于 AuthFilter（Order=0），确保日志在鉴权之后记录
+ * 优先级低于 AuthFilter（Order=-1）和 RateLimitFilter（Order=1）
+ * 确保日志在鉴权和限流之后记录
  */
 @Slf4j
 @Component
@@ -53,6 +54,6 @@ public class AccessLogFilter implements GlobalFilter, Ordered {
 
     @Override
     public int getOrder() {
-        return 0; // 在 AuthFilter(-1) 之后执行
+        return 10; // 在 AuthFilter(-1) 和 RateLimitFilter(1) 之后执行
     }
 }

@@ -30,6 +30,16 @@ public class AdminAuthController {
         return adminAuthService.login(username, password);
     }
 
+    @PostMapping("/refresh")
+    @Operation(summary = "刷新令牌", description = "使用 refreshToken 获取新的 accessToken 和 refreshToken")
+    public Result<Map<String, Object>> refresh(@RequestBody Map<String, String> body) {
+        String refreshToken = body.get("refreshToken");
+        if (refreshToken == null || refreshToken.isBlank()) {
+            return Result.fail("刷新令牌不能为空");
+        }
+        return adminAuthService.refresh(refreshToken);
+    }
+
     @PostMapping("/register")
     @Operation(summary = "注册管理员", description = "仅限超级管理员操作")
     public Result<Void> register(
