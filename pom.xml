@@ -3,23 +3,23 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
-    <groupId>com.mars</groupId>
-    <artifactId>mars-forum-parent</artifactId>
+    <groupId>com.interstellar</groupId>
+    <artifactId>interstellar-forum-parent</artifactId>
     <version>1.0.0</version>
     <packaging>pom</packaging>
 
     <modules>
-        <module>mars-common</module>
-        <module>mars-api</module>
-        <module>mars-gateway</module>
-        <module>mars-auth</module>
-        <module>mars-user</module>
-        <module>mars-post</module>
-        <module>mars-chat</module>
-        <module>mars-admin</module>
-        <module>mars-search</module>
-        <module>mars-interaction</module>
-        <module>mars-relation</module>
+        <module>interstellar-common</module>
+        <module>interstellar-api</module>
+        <module>interstellar-gateway</module>
+        <module>interstellar-auth</module>
+        <module>interstellar-user</module>
+        <module>interstellar-post</module>
+        <module>interstellar-chat</module>
+        <module>interstellar-admin</module>
+        <module>interstellar-search</module>
+        <module>interstellar-interaction</module>
+        <module>interstellar-relation</module>
     </modules>
 
     <properties>

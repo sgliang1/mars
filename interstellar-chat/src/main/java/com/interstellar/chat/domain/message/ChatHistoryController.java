@@ -1,0 +1,74 @@
+package com.interstellar.chat.domain.message;
+
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.interstellar.chat.domain.conversation.Conversation;
+import com.interstellar.chat.domain.conversation.ConversationMapper;
+import com.interstellar.common.Result;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
+
+@RestController
+@RequestMapping("/history")
+@Tag(name = "聊天历史", description = "公共频道历史消息")
+public class ChatHistoryController {
+
+    private static final String PUBLIC_CHANNEL_BIZ_KEY = "public-lobby";
+
+    @Autowired
+    private ConversationMessageMapper conversationMessageMapper;
+
+    @Autowired
+    private ConversationMapper conversationMapper;
+
+    @GetMapping("/recent")
+    @Operation(summary = "最近公共频道消息")
+    public Result<List<Map<String, Object>>> recent(
+            @RequestParam(value = "limit", defaultValue = "40") Integer limit) {
+        int safeLimit = Math.min(Math.max(limit, 1), 100);
+
+        Conversation publicConv = conversationMapper.selectOne(new LambdaQueryWrapper<Conversation>()
+                .eq(Conversation::getBizKey, PUBLIC_CHANNEL_BIZ_KEY)
+                .last("limit 1"));
+
+        if (publicConv == null) {
+            return Result.success(Collections.emptyList());
+        }
+
+        List<ConversationMessage> convMessages = conversationMessageMapper.selectList(
+                new LambdaQueryWrapper<ConversationMessage>()
+                        .eq(ConversationMessage::getConversationId, publicConv.getId())
+                        .orderByDesc(ConversationMessage::getCreatedAt)
+                        .orderByDesc(ConversationMessage::getId)
+                        .last("limit " + safeLimit));
+
+        List<Map<String, Object>> result = new ArrayList<>();
+        for (ConversationMessage msg : convMessages) {
+            result.add(toLegacyMap(msg));
+        }
+        Collections.reverse(result);
+        return Result.success(result);
+    }
+
+    private Map<String, Object> toLegacyMap(ConversationMessage msg) {
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("id", msg.getId() == null ? "" : msg.getId().toString());
+        data.put("senderId", msg.getSenderId() == null ? "" : msg.getSenderId().toString());
+        data.put("senderName", msg.getSenderName());
+        data.put("content", msg.getContent());
+        data.put("createTime", msg.getCreatedAt() == null ? "" : msg.getCreatedAt().toString());
+        data.put("type", msg.getMessageType() == null ? 0 : msg.getMessageType());
+        return data;
+    }
+}
