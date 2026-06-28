@@ -1,5 +1,6 @@
 package com.interstellar.admin.domain.moderation;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -8,12 +9,15 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
 @Slf4j
 @Service
 public class AdminReportService {
+
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
     @Autowired
     private JdbcTemplate jdbcTemplate;
@@ -42,7 +46,39 @@ public class AdminReportService {
             handleIgnore(reportId, targetType, targetId, reason, handlerId);
         }
 
+        // 通知举报人处理结果
+        notifyReporter(report, action, reason);
+
         log.info("举报处理完成: reportId={}, action={}, handlerId={}", reportId, action, handlerId);
+    }
+
+    /**
+     * 向举报人发送处理结果通知
+     */
+    private void notifyReporter(Map<String, Object> report, String action, String reason) {
+        try {
+            Long reporterId = ((Number) report.get("reporter_id")).longValue();
+            String targetType = (String) report.get("target_type");
+
+            String actionText = "confirm_violation".equals(action) ? "已确认违规" : "已忽略";
+            String resultText = reason != null && !reason.isBlank() ? reason : actionText;
+
+            Map<String, String> contentMap = new HashMap<>();
+            contentMap.put("reportId", String.valueOf(report.get("id")));
+            contentMap.put("targetType", targetType);
+            contentMap.put("action", action);
+            contentMap.put("result", resultText);
+            String contentJson = OBJECT_MAPPER.writeValueAsString(contentMap);
+
+            String title = "您的举报已处理：" + actionText;
+
+            jdbcTemplate.update(
+                    "INSERT INTO notification (user_id, category, title, content, source_type, source_id, read_status, created_at) "
+                            + "VALUES (?, ?, ?, ?, ?, ?, 0, NOW())",
+                    reporterId, "interaction", title, contentJson, "report_result", String.valueOf(report.get("id")));
+        } catch (Exception e) {
+            log.warn("发送举报处理通知失败", e);
+        }
     }
 
     private void handleConfirmViolation(Long reportId, String targetType, Long targetId,

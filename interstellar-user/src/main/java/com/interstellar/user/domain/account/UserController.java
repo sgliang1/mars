@@ -71,4 +71,16 @@ public class UserController {
         request.setUserId(Long.parseLong(userIdStr));
         return userService.updateProfile(request);
     }
+
+    @DeleteMapping("/user/account")
+    @Operation(summary = "注销账号", description = "验证密码后注销当前用户账号")
+    public Result deleteAccount(@RequestHeader("X-User-Id") String userIdStr,
+                                @RequestBody Map<String, String> body) {
+        Long userId = Long.parseLong(userIdStr);
+        String password = body.get("password");
+        if (password == null || password.isBlank()) {
+            return Result.fail("请输入密码");
+        }
+        return userService.deleteAccount(userId, password);
+    }
 }

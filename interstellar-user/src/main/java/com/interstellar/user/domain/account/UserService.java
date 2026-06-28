@@ -3,8 +3,15 @@ package com.interstellar.user.domain.account;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.interstellar.common.Result;
 import com.interstellar.common.model.User;
+import com.interstellar.common.push.DeviceTokenMapper;
+import com.interstellar.common.push.DeviceToken;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.time.LocalDate;
+import java.time.Period;
 
 @Service
 public class UserService {
@@ -14,6 +21,12 @@ public class UserService {
 
     @Autowired
     private UserProfileMapper userProfileMapper;
+
+    @Autowired
+    private DeviceTokenMapper deviceTokenMapper;
+
+    @Autowired
+    private PasswordEncoder passwordEncoder;
 
     public Result update(Long userId, UpdateUserRequest request) {
         if (request.getUsername() != null) {
@@ -74,6 +87,14 @@ public class UserService {
         }
         if (request.getBirthday() != null) {
             profile.setBirthday(request.getBirthday());
+            // 自动计算是否未成年
+            try {
+                LocalDate birthDate = LocalDate.parse(request.getBirthday());
+                int age = Period.between(birthDate, LocalDate.now()).getYears();
+                profile.setIsMinor(age < 18 ? 1 : 0);
+            } catch (Exception ignored) {
+                // 日期格式不合法，不影响主流程
+            }
             needUpdateProfile = true;
         }
 
@@ -86,5 +107,38 @@ public class UserService {
         }
 
         return Result.successMessage("资料更新成功");
+    }
+
+    @Transactional
+    public Result deleteAccount(Long userId, String password) {
+        // 验证密码
+        User user = userMapper.selectById(userId);
+        if (user == null) {
+            return Result.fail("用户不存在");
+        }
+        if (!passwordEncoder.matches(password, user.getPassword())) {
+            return Result.fail("密码错误");
+        }
+
+        // 更新 user_profile: 标记删除状态，清理敏感信息
+        UserProfile profile = userProfileMapper.selectById(userId);
+        if (profile == null) {
+            profile = new UserProfile();
+            profile.setUserId(userId);
+        }
+        profile.setStatus(-1);
+        profile.setNickname("已注销用户");
+        profile.setBio("");
+        profile.setAvatarUrl("");
+        if (userMapper.selectById(userId) != null) {
+            userProfileMapper.insertOrUpdate(profile);
+        }
+
+        // 清除设备令牌
+        deviceTokenMapper.delete(
+                new LambdaQueryWrapper<DeviceToken>()
+                        .eq(DeviceToken::getUserId, userId));
+
+        return Result.successMessage("账号已注销");
     }
 }

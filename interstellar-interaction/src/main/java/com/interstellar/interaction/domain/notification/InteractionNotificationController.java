@@ -1,10 +1,13 @@
 package com.interstellar.interaction.domain.notification;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.interstellar.common.Result;
 import com.interstellar.interaction.domain.filter.UserFilterService;
 import com.interstellar.interaction.domain.post.PostEntity;
 import com.interstellar.interaction.domain.post.PostMapper;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
@@ -12,9 +15,13 @@ import java.time.LocalDateTime;
 import com.interstellar.common.model.Notification;
 import java.util.*;
 
+@Slf4j
 @RestController
 @RequestMapping("/notification")
 public class InteractionNotificationController {
+
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+    private static final TypeReference<Map<String, String>> MAP_TYPE_REF = new TypeReference<>() {};
 
     @Autowired
     private InteractionNotificationMapper notificationMapper;
@@ -189,22 +196,17 @@ public class InteractionNotificationController {
 
     // ---- 工具方法 ----
 
+    /**
+     * 解析 JSON 格式的 content 字段，使用 Jackson 替代手动字符串分割
+     */
     private Map<String, String> parseContent(String content) {
-        Map<String, String> map = new HashMap<>();
-        if (content == null || content.isEmpty()) return map;
-        content = content.trim();
-        if (content.startsWith("{") && content.endsWith("}")) {
-            content = content.substring(1, content.length() - 1);
-            for (String pair : content.split(",")) {
-                String[] kv = pair.split(":", 2);
-                if (kv.length == 2) {
-                    String key = kv[0].trim().replace("\"", "");
-                    String value = kv[1].trim().replace("\"", "");
-                    map.put(key, value);
-                }
-            }
+        if (content == null || content.isBlank()) return Collections.emptyMap();
+        try {
+            return OBJECT_MAPPER.readValue(content.trim(), MAP_TYPE_REF);
+        } catch (Exception e) {
+            log.warn("解析通知 content 失败: {}", content, e);
+            return Collections.emptyMap();
         }
-        return map;
     }
 
     private Long parsePostId(Notification n) {

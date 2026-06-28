@@ -225,15 +225,13 @@ public class RateLimitFilter implements GlobalFilter, Ordered {
 
     /**
      * 返回 429 Too Many Requests 响应
+     * CORS 头由 CorsWebFilter 统一处理，此处不再手动添加
      */
     private Mono<Void> tooManyRequests(ServerWebExchange exchange, RateLimitResult result) {
         ServerHttpResponse response = exchange.getResponse();
         response.setStatusCode(HttpStatus.TOO_MANY_REQUESTS);
         response.getHeaders().setContentType(MediaType.APPLICATION_JSON);
         response.getHeaders().add("Retry-After", String.valueOf(result.retryAfter));
-        response.getHeaders().add("Access-Control-Allow-Origin",
-                exchange.getRequest().getHeaders().getOrigin());
-        response.getHeaders().add("Access-Control-Allow-Credentials", "true");
 
         try {
             byte[] body = objectMapper.writeValueAsBytes(

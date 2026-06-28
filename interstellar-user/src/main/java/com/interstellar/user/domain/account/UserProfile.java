@@ -17,6 +17,7 @@ public class UserProfile {
     private Integer gender;
     private String birthday;
     private Integer status;
+    private Integer isMinor;        // 是否未成年(0否1是)
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
     private Integer followerCount;

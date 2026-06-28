@@ -4,6 +4,7 @@ import com.interstellar.admin.common.AdminAudit;
 import com.interstellar.admin.common.AdminPageResult;
 import com.interstellar.admin.common.AdminQueryDTO;
 import com.interstellar.admin.common.AdminQueryBuilder;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.interstellar.common.Result;
 import com.interstellar.common.push.PushPayload;
 import com.interstellar.common.push.PushService;
@@ -24,6 +25,8 @@ import java.util.HashMap;
 @RequestMapping("/admin/posts")
 @Tag(name = "帖子管理", description = "管理员对帖子的审核与管理")
 public class AdminPostController {
+
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
     // 审核状态常量
     public static final int AUDIT_PENDING = 0;        // 待审核
@@ -524,13 +527,12 @@ public class AdminPostController {
             String postTitle = (String) posts.get(0).get("title");
             if (authorId == null) return;
 
-            // 构建 content JSON（截断 postTitle/reason 保证不超过 notification.content varchar(255)）
-            String safeTitle = postTitle != null ? postTitle.replace("\"", "\\\"") : "";
-            String safeReason = reason != null ? (reason.length() > 80 ? reason.substring(0, 80) : reason).replace("\"", "\\\"") : "";
-            String content = "{\"postId\":\"" + postId + "\""
-                    + ",\"postTitle\":\"" + safeTitle + "\""
-                    + ",\"reason\":\"" + safeReason + "\""
-                    + "}";
+            // 构建 content JSON（使用 Jackson 避免手动拼接的转义问题）
+            Map<String, String> contentMap = new HashMap<>();
+            contentMap.put("postId", String.valueOf(postId));
+            contentMap.put("postTitle", postTitle != null ? postTitle : "");
+            contentMap.put("reason", reason != null ? (reason.length() > 80 ? reason.substring(0, 80) : reason) : "");
+            String content = OBJECT_MAPPER.writeValueAsString(contentMap);
 
             // 写入 notification 表
             jdbcTemplate.update(
