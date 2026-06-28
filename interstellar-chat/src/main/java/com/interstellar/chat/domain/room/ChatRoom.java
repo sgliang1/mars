@@ -18,6 +18,10 @@ public class ChatRoom {
     private String name;
     private String description;
     private String icon;
+    private String type;        // "public" / "private"
+    private String planet;      // 所属星球（可为空）
+    private Integer discoverable; // 1=可发现, 0=隐藏
+    private String joinMode;    // "open" / "approval" / "closed"
     private Integer maxMembers;
     private Integer memberCount;
     private Integer status; // 1=active, 0=closed

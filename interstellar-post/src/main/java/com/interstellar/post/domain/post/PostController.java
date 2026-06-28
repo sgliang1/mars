@@ -53,6 +53,7 @@ public class PostController {
     @Autowired private com.interstellar.post.domain.poll.PollService pollService;
     @Autowired private com.interstellar.post.domain.filter.UserFilterService userFilterService;
     @Autowired private PostTopicMapper postTopicMapper;
+    @Autowired private com.interstellar.api.ChatFeignClient chatFeignClient;
 
 
     @Value("${file.local-path}")
@@ -107,6 +108,7 @@ public class PostController {
             post.setCommentCount(0);
             post.setShareCount(0);
             post.setVisibility(postDTO.getVisibility() != null ? postDTO.getVisibility() : 0);
+            post.setClubId(postDTO.getClubId());
 
             // Phase 4.4: 位置信息
             post.setLocationName(postDTO.getLocationName());
@@ -315,6 +317,14 @@ public class PostController {
             data.put("title", title);
             data.put("username", post.getUsername());
             data.put("userId", post.getUserId());
+            // 获取作者的俱乐部名
+            try {
+                var clubResult = chatFeignClient.getUserClubName(post.getUserId());
+                String clubName = (clubResult != null && clubResult.getData() != null) ? clubResult.getData() : "";
+                data.put("clubName", clubName);
+            } catch (Exception e) {
+                data.put("clubName", "");
+            }
             data.put("imageList", imageUrls);
             data.put("likeCount", post.getLikeCount());
             data.put("commentCount", post.getCommentCount());
@@ -323,6 +333,8 @@ public class PostController {
             data.put("isPinned", post.getIsPinned());
             data.put("isFeatured", post.getIsFeatured());
             data.put("createTime", post.getCreateTime());
+            data.put("visibility", post.getVisibility() != null ? post.getVisibility() : 0);
+            data.put("clubId", post.getClubId());
             data.put("auditStatus", post.getAuditStatus());
             data.put("displayStatus", post.getDisplayStatus());
             data.put("reviewReason", post.getReviewReason());
@@ -349,6 +361,42 @@ public class PostController {
                 }
             } catch (Exception e) {
                 log.warn("检查帖子作者过滤状态异常: postId={}", id, e);
+            }
+        }
+
+        // 可见性权限检查
+        Integer visibility = data.get("visibility") != null ? ((Number) data.get("visibility")).intValue() : 0;
+        if (visibility != null && visibility > 0) {
+            Long postAuthorId = (Long) data.get("userId");
+            // 作者自己可以看任何可见性的帖子
+            if (userIdStr == null || postAuthorId == null) {
+                if (visibility > 0) return Result.fail("内容不存在");
+            } else {
+                Long viewerId = Long.parseLong(userIdStr);
+                if (!postAuthorId.equals(viewerId)) {
+                    boolean allowed = false;
+                    if (visibility == 1 || visibility == 2) {
+                        // 关注者可见 / 好友可见 — 检查是否关注了作者
+                        String followKey = CacheKeys.relationKey(CacheKeys.RELATION_CHECK, viewerId, postAuthorId);
+                        Object isFollowing = cacheService.get(followKey);
+                        if ("1".equals(String.valueOf(isFollowing))) allowed = true;
+                    }
+                    if (visibility == 4 || visibility == 5) {
+                        // 俱乐部可见 — 通过 Feign 检查是否是俱乐部成员
+                        Long clubId = data.get("clubId") != null ? ((Number) data.get("clubId")).longValue() : null;
+                        if (clubId != null) {
+                            try {
+                                var result = chatFeignClient.isMember(clubId, viewerId);
+                                if (result != null && Boolean.TRUE.equals(result.getData())) {
+                                    allowed = true;
+                                }
+                            } catch (Exception e) {
+                                log.warn("检查俱乐部成员异常: clubId={}, userId={}", clubId, viewerId, e);
+                            }
+                        }
+                    }
+                    if (!allowed) return Result.fail("内容不存在");
+                }
             }
         }
 

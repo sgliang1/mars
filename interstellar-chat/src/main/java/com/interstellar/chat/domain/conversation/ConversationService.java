@@ -199,6 +199,24 @@ public class ConversationService {
     }
 
     @Transactional
+    public Map<String, Object> ensurePostDiscussion(Long userId, String postId, String postTitle) {
+        String safeId = StringUtils.hasText(postId) ? postId.trim() : "unknown";
+        String safeTitle = StringUtils.hasText(postTitle) ? postTitle.trim() : "帖子";
+        if (safeTitle.length() > 30) safeTitle = safeTitle.substring(0, 30) + "...";
+        Conversation conversation = ensureConversation(
+                TYPE_GROUP,
+                "post-discuss-" + safeId,
+                safeTitle + " · 实时讨论",
+                "这条帖子的实时讨论区。有讨论才开，没讨论就关。",
+                LocalDateTime.now()
+        );
+        ConversationMember member = ensureMember(conversation.getId(), userId);
+        ensureSeedMessage(conversation.getId(), "system", "系统",
+                "欢迎来到实时讨论，这里是即时互动的空间。", LocalDateTime.now());
+        return getSummary(userId, conversation.getId());
+    }
+
+    @Transactional
     public Map<String, Object> markRead(Long userId, Long conversationId) {
         Conversation conversation = requireConversation(conversationId);
         ConversationMember member = requireMember(conversationId, userId);

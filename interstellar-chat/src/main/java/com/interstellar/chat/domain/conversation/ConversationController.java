@@ -70,6 +70,17 @@ public class ConversationController {
         ));
     }
 
+    @PostMapping("/post-discuss")
+    @Operation(summary = "获取/创建帖子实时讨论")
+    public Result<Map<String, Object>> postDiscussion(@RequestBody Map<String, Object> body,
+                                                      @RequestHeader("X-User-Id") String userIdStr) {
+        return Result.success(conversationService.ensurePostDiscussion(
+                Long.parseLong(userIdStr),
+                value(body, "postId"),
+                value(body, "title")
+        ));
+    }
+
     @PostMapping("/{conversationId}/read")
     public Result<Map<String, Object>> markRead(@PathVariable("conversationId") Long conversationId,
                                                 @RequestHeader("X-User-Id") String userIdStr) {

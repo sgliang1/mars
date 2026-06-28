@@ -23,8 +23,10 @@ public class PostDTO {
     private List<Long> mentionUserIds;
 
     @Min(value = 0, message = "可见范围值无效")
-    @Max(value = 3, message = "可见范围值无效")
+    @Max(value = 5, message = "可见范围值无效")
     private Integer visibility;
+
+    private Long clubId;
 
     @Future(message = "定时发布时间必须是未来时间")
     private LocalDateTime scheduledAt;

@@ -63,7 +63,7 @@ public class FeedService {
 
         List<Map<String, Object>> rows = namedJdbcTemplate.queryForList(
                 "SELECT * FROM post WHERE user_id IN (:followingIds) AND display_status = 1 " +
-                "AND visibility = 0 AND deleted_at IS NULL " +
+                "AND visibility IN (0, 1) AND deleted_at IS NULL " +
                 "ORDER BY is_pinned DESC, pinned_at DESC, create_time DESC " +
                 "LIMIT :size OFFSET :offset", params);
 
@@ -155,10 +155,10 @@ public class FeedService {
      */
     private List<Post> getPersonalizedHotFeed(Long userId, int size) {
         List<Long> interactedAuthorIds = namedJdbcTemplate.getJdbcTemplate().queryForList(
-                "SELECT DISTINCT p.user_id FROM user_behavior ub " +
+                "SELECT p.user_id FROM user_behavior ub " +
                 "JOIN post p ON ub.target_id = p.id " +
                 "WHERE ub.user_id = ? AND ub.create_time > DATE_SUB(NOW(), INTERVAL 7 DAY) " +
-                "ORDER BY MAX(ub.create_time) DESC LIMIT 20",
+                "GROUP BY p.user_id ORDER BY MAX(ub.create_time) DESC LIMIT 20",
                 Long.class, userId);
 
         if (interactedAuthorIds.isEmpty()) {
