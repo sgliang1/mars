@@ -29,6 +29,14 @@ public class NotificationPreference {
     private Boolean chatPushEnabled;
     @TableField("system_enabled")
     private Boolean systemEnabled;
+    @TableField("like_push_enabled")
+    private Boolean likePushEnabled;
+    @TableField("comment_push_enabled")
+    private Boolean commentPushEnabled;
+    @TableField("follow_push_enabled")
+    private Boolean followPushEnabled;
+    @TableField("broadcast_push_enabled")
+    private Boolean broadcastPushEnabled;
     @TableField("updated_at")
     private LocalDateTime updatedAt;
 
@@ -41,6 +49,10 @@ public class NotificationPreference {
         pref.setInteractionEnabled(true);
         pref.setChatPushEnabled(true);
         pref.setSystemEnabled(true);
+        pref.setLikePushEnabled(true);
+        pref.setCommentPushEnabled(true);
+        pref.setFollowPushEnabled(true);
+        pref.setBroadcastPushEnabled(true);
         return pref;
     }
 

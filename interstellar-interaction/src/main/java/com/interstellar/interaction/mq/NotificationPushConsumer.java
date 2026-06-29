@@ -62,7 +62,7 @@ public class NotificationPushConsumer implements RocketMQListener<NotificationMe
                 return;
             }
 
-            if (!preferenceHelper.shouldPushInteraction(userId)) {
+            if (!preferenceHelper.shouldPushByType(userId, msg.getSourceType())) {
                 return;
             }
 

@@ -12,7 +12,7 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 @EnableDiscoveryClient
 @EnableFeignClients(basePackages = "com.interstellar.api")
 @EnableScheduling
-@ComponentScan(basePackages = {"com.interstellar.post", "com.interstellar.common", "com.interstellar.api"})
+@ComponentScan(basePackages = {"com.interstellar.post", "com.interstellar.common"})
 @MapperScan(value = {"com.interstellar.post.domain.*", "com.interstellar.common.push", "com.interstellar.common.outbox"}, annotationClass = org.apache.ibatis.annotations.Mapper.class)
 public class PostApplication {
     public static void main(String[] args) {

@@ -82,6 +82,12 @@ public class DashboardService {
         dto.setExpPoints(profile.getExpPoints() != null ? profile.getExpPoints() : 0);
         dto.setLevelName(profile.getLevelName() != null ? profile.getLevelName() : "新手");
         dto.setCreditScore(profile.getCreditScore() != null ? profile.getCreditScore() : 100);
+        dto.setReputation(profile.getReputation() != null ? profile.getReputation() : 0);
+
+        // 最近活跃时间
+        if (profile.getLastActiveAt() != null) {
+            dto.setLastActiveAt(profile.getLastActiveAt().toString());
+        }
 
         return Result.success(dto);
     }

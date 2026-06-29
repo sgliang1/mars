@@ -18,6 +18,11 @@
             <artifactId>interstellar-common</artifactId>
             <version>1.0.0</version>
         </dependency>
+        <dependency>
+            <groupId>com.interstellar</groupId>
+            <artifactId>interstellar-api</artifactId>
+            <version>1.0.0</version>
+        </dependency>
 
         <dependency>
             <groupId>org.springframework.boot</groupId>

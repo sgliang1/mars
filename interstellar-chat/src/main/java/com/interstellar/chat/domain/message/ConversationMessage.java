@@ -17,6 +17,8 @@ public class ConversationMessage {
     private String senderName;
     private String content;
     private Integer messageType;
+    private String mentionType; // null=无, "all"=@所有人, "specific"=@某人
+    private Integer isPinned;   // 0=未置顶, 1=已置顶
     private String deliveryStatus;
     private LocalDateTime createdAt;
 }

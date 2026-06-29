@@ -220,4 +220,57 @@ public class AuthService {
 
         return Result.successMessage("密码修改成功");
     }
+
+    /**
+     * 忘记密码：验证邮箱存在性，生成重置令牌存入 Redis（有效期 15 分钟）
+     * 注意：当前未接入邮件服务，令牌仅记录到日志中，后续接入邮件后替换发送逻辑
+     */
+    public Result forgotPassword(String email) {
+        User user = userMapper.selectOne(new LambdaQueryWrapper<User>().eq(User::getEmail, email));
+        if (user == null) {
+            // 不泄露邮箱是否存在，统一返回成功
+            return Result.successMessage("如果该邮箱已注册，重置链接已发送");
+        }
+
+        String token = UUID.randomUUID().toString().replace("-", "");
+        redisTemplate.opsForValue().set(
+                "interstellar:auth:reset_token:" + token,
+                user.getId().toString(),
+                Duration.ofMinutes(15));
+
+        log.info("[密码重置] 用户 {} 的重置令牌: {}（有效期15分钟）", user.getUsername(), token);
+
+        return Result.successMessage("如果该邮箱已注册，重置链接已发送");
+    }
+
+    /**
+     * 重置密码：验证令牌，设置新密码
+     */
+    public Result resetPassword(String token, String newPassword) {
+        if (newPassword == null || newPassword.length() < 6) {
+            return Result.fail("新密码长度不能少于6位");
+        }
+
+        String key = "interstellar:auth:reset_token:" + token;
+        String userIdStr = (String) redisTemplate.opsForValue().get(key);
+        if (userIdStr == null) {
+            return Result.fail("重置链接已过期或无效");
+        }
+
+        Long userId = Long.parseLong(userIdStr);
+        User user = userMapper.selectById(userId);
+        if (user == null) {
+            return Result.fail("用户不存在");
+        }
+
+        user.setPassword(passwordEncoder.encode(newPassword));
+        userMapper.updateById(user);
+
+        // 删除已使用的令牌
+        redisTemplate.delete(key);
+        // 吊销所有 refresh token
+        revokeRefreshTokens(userId);
+
+        return Result.successMessage("密码重置成功");
+    }
 }

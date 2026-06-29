@@ -10,6 +10,7 @@ import com.interstellar.chat.domain.conversation.ConversationMemberMapper;
 import com.interstellar.chat.domain.conversation.ConversationMapper;
 import com.interstellar.chat.domain.message.ConversationMessage;
 import com.interstellar.chat.domain.message.ConversationMessageMapper;
+import com.interstellar.chat.infrastructure.presence.PresenceService;
 import com.interstellar.chat.mq.ChatMessageProducer;
 import com.interstellar.common.Result;
 import com.interstellar.common.cache.CacheKeys;
@@ -82,6 +83,10 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
     @Autowired(required = false)
     private ChatMessageProducer chatMessageProducer;
 
+    @Lazy
+    @Autowired(required = false)
+    private PresenceService presenceService;
+
     private boolean heartbeatStarted = false;
 
     private synchronized void ensureHeartbeatStarted() {
@@ -104,6 +109,10 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
                 ONLINE_USERS.forEach((userId, session) -> {
                     if (session.isOpen()) {
                         sessionManager.heartbeat(userId);
+                        // 记录用户活跃
+                        if (presenceService != null) {
+                            presenceService.recordActivity(userId);
+                        }
                     }
                 });
             } catch (Exception e) {
@@ -309,6 +318,10 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
             conversationMessage.setSenderName(username);
             conversationMessage.setContent(content);
             conversationMessage.setMessageType(messageType);
+            // 解析 @所有人
+            if (content.contains("@所有人") || content.contains("@all")) {
+                conversationMessage.setMentionType("all");
+            }
             conversationMessage.setDeliveryStatus("sent");
             conversationMessage.setCreatedAt(LocalDateTime.now());
             conversationMessageMapper.insert(conversationMessage);

@@ -54,6 +54,27 @@ public class AuthController {
         return authService.changePassword(userId, request.getOldPassword(), request.getNewPassword());
     }
 
+    @PostMapping("/forgot-password")
+    @Operation(summary = "忘记密码", description = "通过邮箱重置密码")
+    public Result forgotPassword(@RequestBody Map<String, String> body) {
+        String email = body.get("email");
+        if (email == null || email.isBlank()) {
+            return Result.fail("邮箱不能为空");
+        }
+        return authService.forgotPassword(email);
+    }
+
+    @PostMapping("/reset-password")
+    @Operation(summary = "重置密码", description = "通过令牌重置密码")
+    public Result resetPassword(@RequestBody Map<String, String> body) {
+        String token = body.get("token");
+        String newPassword = body.get("newPassword");
+        if (token == null || token.isBlank()) {
+            return Result.fail("重置令牌不能为空");
+        }
+        return authService.resetPassword(token, newPassword);
+    }
+
     @Data
     public static class ChangePasswordRequest {
         @NotBlank(message = "旧密码不能为空")

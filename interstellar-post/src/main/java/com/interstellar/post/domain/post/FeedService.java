@@ -122,6 +122,41 @@ public class FeedService {
     }
 
     /**
+     * 好友动态：互关好友的帖子（含好友可见）
+     */
+    public List<Post> getMutualFeed(Long userId, int page, int size) {
+        String cacheKey = FEED_CACHE_KEY + "mutual:" + userId + ":" + page;
+        @SuppressWarnings("unchecked")
+        List<Post> cached = cacheService.get(cacheKey);
+        if (cached != null) return cached;
+
+        List<Long> mutualIds = namedJdbcTemplate.getJdbcTemplate().queryForList(
+                "SELECT ur1.followed_id FROM user_relation ur1 " +
+                "INNER JOIN user_relation ur2 ON ur1.followed_id = ur2.follower_id AND ur1.follower_id = ur2.followed_id " +
+                "WHERE ur1.follower_id = ?", Long.class, userId);
+
+        if (mutualIds.isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        int offset = (page - 1) * size;
+        MapSqlParameterSource params = new MapSqlParameterSource()
+                .addValue("mutualIds", mutualIds)
+                .addValue("size", size)
+                .addValue("offset", offset);
+
+        List<Map<String, Object>> rows = namedJdbcTemplate.queryForList(
+                "SELECT * FROM post WHERE user_id IN (:mutualIds) AND display_status = 1 " +
+                "AND visibility IN (0, 1, 2) AND deleted_at IS NULL " +
+                "ORDER BY is_pinned DESC, pinned_at DESC, create_time DESC " +
+                "LIMIT :size OFFSET :offset", params);
+
+        List<Post> posts = mapToPosts(rows);
+        cacheService.set(cacheKey, posts, FEED_CACHE_TTL);
+        return posts;
+    }
+
+    /**
      * 推荐流 V2：70% 关注流 + 30% 个性化热度流
      */
     public List<Post> getRecommendedFeed(Long userId, int page, int size) {
@@ -205,6 +240,10 @@ public class FeedService {
         if (!recKeys.isEmpty()) {
             redisTemplate.delete(recKeys);
         }
+        Set<String> mutualKeys = cacheService.scanKeys(FEED_CACHE_KEY + "mutual:" + userId + ":*");
+        if (!mutualKeys.isEmpty()) {
+            redisTemplate.delete(mutualKeys);
+        }
     }
 
     /**
@@ -266,7 +305,7 @@ class FeedController {
     @Autowired private com.interstellar.post.domain.filter.UserFilterService userFilterService;
 
     @GetMapping
-    @Operation(summary = "获取Feed流", description = "type: following(关注)/recommended(推荐)/hot(热门)")
+    @Operation(summary = "获取Feed流", description = "type: following(关注)/recommended(推荐)/hot(热门)/latest(最新)/mutual(好友动态)")
     public Result<List<Post>> feed(
             @RequestHeader("X-User-Id") String userIdStr,
             @RequestParam(value = "type", defaultValue = "recommended") String type,
@@ -280,6 +319,7 @@ class FeedController {
             case "following" -> posts = feedService.getFollowingFeed(userId, page, size);
             case "hot" -> posts = feedService.getHotFeed(page, size);
             case "latest" -> posts = feedService.getLatestFeed(page, size);
+            case "mutual" -> posts = feedService.getMutualFeed(userId, page, size);
             default -> posts = feedService.getRecommendedFeed(userId, page, size);
         }
 

@@ -16,6 +16,7 @@ import com.interstellar.common.cache.CacheService;
 import com.interstellar.common.util.SanitizeUtil;
 import com.interstellar.post.mq.NotificationProducer;
 import com.interstellar.post.mq.SearchSyncProducer;
+import com.interstellar.api.UserFeignClient;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -36,6 +37,7 @@ public class PostService {
     @Autowired private SearchSyncProducer searchSyncProducer;
     @Autowired private PostEditHistoryMapper editHistoryMapper;
     @Autowired private FeedService feedService;
+    @Autowired private UserFeignClient userFeignClient;
 
     @Transactional
     public void publish(Post post, String fullContent) {
@@ -63,6 +65,16 @@ public class PostService {
         // 清除 Feed 缓存
         feedService.evictUserFeedCache(post.getUserId());
         feedService.evictHotFeedCache();
+
+        // 声望 +5（发帖奖励）
+        try {
+            userFeignClient.addReputation(java.util.Map.of(
+                    "userId", post.getUserId(),
+                    "amount", 5,
+                    "sourceType", "post",
+                    "sourceId", post.getId(),
+                    "description", "发帖奖励"));
+        } catch (Exception ignored) {}
     }
 
     @Transactional
@@ -194,9 +206,9 @@ public class PostService {
                 cacheService.delete(CacheKeys.key(CacheKeys.POST_DETAIL, postId));
                 feedService.evictHotFeedCache();
                 try {
-                    // 通知通过 MQ 异步发送到 interstellar-interaction 消费
                     Post postForNotify = postMapper.selectById(postId);
                     if (postForNotify != null && !postForNotify.getUserId().equals(userId)) {
+                        // 通知通过 MQ 异步发送到 interstellar-interaction 消费
                         NotificationMessage msg = new NotificationMessage(
                                 postForNotify.getUserId(), "interaction",
                                 username != null ? username : "匿名",
@@ -206,6 +218,16 @@ public class PostService {
                         msg.setActorId(userId);
                         msg.setPostId(postId);
                         notificationProducer.sendInteraction(msg);
+
+                        // 声望 +1（被点赞奖励）
+                        try {
+                            userFeignClient.addReputation(java.util.Map.of(
+                                    "userId", postForNotify.getUserId(),
+                                    "amount", 1,
+                                    "sourceType", "like_received",
+                                    "sourceId", postId,
+                                    "description", "帖子被点赞"));
+                        } catch (Exception ignored) {}
                     }
                 } catch (Exception ignored) {}
 

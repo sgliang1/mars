@@ -95,98 +95,31 @@ public class ActivityController {
 
         return Result.successMessage("参与成功");
     }
-}
 
-@RestController
-@RequestMapping("/admin/activities")
-@Tag(name = "活动管理", description = "管理员活动CRUD")
-class AdminActivityController {
+    @GetMapping("/{id}/ranking")
+    @Operation(summary = "活动排行榜", description = "按点赞数或参与时间排序")
+    public Result<List<Map<String, Object>>> ranking(
+            @PathVariable("id") Long activityId,
+            @RequestParam(value = "sortBy", defaultValue = "likes") String sortBy,
+            @RequestParam(value = "limit", defaultValue = "50") int limit) {
 
-    @Autowired private JdbcTemplate jdbcTemplate;
+        String orderClause = "likes".equals(sortBy)
+                ? "p.like_count DESC, ap.created_at ASC"
+                : "ap.created_at ASC";
 
-    @GetMapping
-    @Operation(summary = "活动列表", description = "分页查询，关联话题信息")
-    public Result<Map<String, Object>> list(
-            @RequestParam(value = "page", defaultValue = "1") int page,
-            @RequestParam(value = "size", defaultValue = "20") int size,
-            @RequestParam(value = "status", required = false) Integer status) {
-        int offset = (page - 1) * size;
-        StringBuilder where = new StringBuilder("1=1");
-        java.util.List<Object> params = new java.util.ArrayList<>();
-        if (status != null) { where.append(" AND a.status = ?"); params.add(status); }
+        List<Map<String, Object>> ranking = jdbcTemplate.queryForList(
+                "SELECT ap.user_id, p.username, ap.post_id, p.title, p.like_count, p.comment_count, ap.created_at AS joined_at " +
+                "FROM activity_participant ap " +
+                "JOIN post p ON ap.post_id = p.id " +
+                "WHERE ap.activity_id = ? AND p.display_status = 1 AND p.deleted_at IS NULL " +
+                "ORDER BY " + orderClause + " LIMIT ?",
+                activityId, limit);
 
-        Long total = jdbcTemplate.queryForObject(
-                "SELECT COUNT(*) FROM topic_activity a WHERE " + where, Long.class, params.toArray());
+        // 添加排名序号
+        for (int i = 0; i < ranking.size(); i++) {
+            ranking.get(i).put("rank", i + 1);
+        }
 
-        params.add(size); params.add(offset);
-        List<Map<String, Object>> records = jdbcTemplate.queryForList(
-                "SELECT a.*, t.title AS topic_title, t.slug AS topic_slug " +
-                "FROM topic_activity a LEFT JOIN topic t ON a.topic_id = t.id " +
-                "WHERE " + where + " ORDER BY a.created_at DESC LIMIT ? OFFSET ?", params.toArray());
-
-        Map<String, Object> data = new java.util.HashMap<>();
-        data.put("records", records);
-        data.put("total", total != null ? total : 0);
-        data.put("page", page);
-        data.put("size", size);
-        return Result.success(data);
-    }
-
-    @PostMapping
-    public Result<String> create(@RequestBody Map<String, Object> body) {
-        Long topicId = ((Number) body.get("topicId")).longValue();
-        String title = (String) body.get("title");
-        String summary = (String) body.getOrDefault("summary", "");
-        String rules = (String) body.getOrDefault("rules", "");
-        String coverImage = (String) body.getOrDefault("coverImage", "");
-        String startTime = (String) body.get("startTime");
-        String endTime = (String) body.get("endTime");
-        String activityType = (String) body.getOrDefault("activityType", "challenge");
-
-        if (title == null || title.isBlank()) return Result.fail("标题不能为空");
-        if (startTime == null || endTime == null) return Result.fail("时间不能为空");
-
-        jdbcTemplate.update(
-                "INSERT INTO topic_activity (topic_id, activity_type, title, summary, rules, cover_image, start_time, end_time) VALUES (?,?,?,?,?,?,?,?)",
-                topicId, activityType, title, summary, rules, coverImage,
-                java.time.LocalDateTime.parse(startTime.replace(" ", "T")),
-                java.time.LocalDateTime.parse(endTime.replace(" ", "T")));
-
-        return Result.successMessage("创建成功");
-    }
-
-    @PutMapping("/{id}")
-    public Result<String> update(@PathVariable("id") Long id, @RequestBody Map<String, Object> body) {
-        StringBuilder sql = new StringBuilder("UPDATE topic_activity SET ");
-        java.util.List<Object> params = new java.util.ArrayList<>();
-
-        if (body.containsKey("title")) { sql.append("title = ?, "); params.add(body.get("title")); }
-        if (body.containsKey("summary")) { sql.append("summary = ?, "); params.add(body.get("summary")); }
-        if (body.containsKey("rules")) { sql.append("rules = ?, "); params.add(body.get("rules")); }
-        if (body.containsKey("coverImage")) { sql.append("cover_image = ?, "); params.add(body.get("coverImage")); }
-        if (body.containsKey("status")) { sql.append("status = ?, "); params.add(body.get("status")); }
-
-        if (params.isEmpty()) return Result.fail("无更新内容");
-
-        sql.append("id = id WHERE id = ?"); // 占位，避免末尾逗号
-        params.add(id);
-
-        // 重新构建 SQL 去掉末尾多余逗号
-        String finalSql = sql.toString().replace(", id = id", "");
-        jdbcTemplate.update(finalSql + " WHERE id = ?", params.toArray());
-
-        return Result.successMessage("更新成功");
-    }
-
-    @PutMapping("/{id}/status")
-    public Result<String> toggleStatus(@PathVariable("id") Long id) {
-        List<Map<String, Object>> activities = jdbcTemplate.queryForList("SELECT status FROM topic_activity WHERE id = ?", id);
-        if (activities.isEmpty()) return Result.fail("活动不存在");
-
-        Integer current = (Integer) activities.get(0).get("status");
-        int newStatus = (current != null && current == 1) ? -1 : 1;
-        jdbcTemplate.update("UPDATE topic_activity SET status = ? WHERE id = ?", newStatus, id);
-
-        return Result.successMessage(newStatus == 1 ? "已上线" : "已下线");
+        return Result.success(ranking);
     }
 }

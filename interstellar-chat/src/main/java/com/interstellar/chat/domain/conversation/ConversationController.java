@@ -81,6 +81,12 @@ public class ConversationController {
         ));
     }
 
+    @GetMapping("/{conversationId}/discussion-active")
+    @Operation(summary = "检查实时讨论是否活跃")
+    public Result<Boolean> isDiscussionActive(@PathVariable("conversationId") Long conversationId) {
+        return Result.success(conversationService.isDiscussionActive(conversationId));
+    }
+
     @PostMapping("/{conversationId}/read")
     public Result<Map<String, Object>> markRead(@PathVariable("conversationId") Long conversationId,
                                                 @RequestHeader("X-User-Id") String userIdStr) {

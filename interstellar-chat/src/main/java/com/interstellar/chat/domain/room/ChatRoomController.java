@@ -24,8 +24,10 @@ public class ChatRoomController {
     @Operation(summary = "列表")
     public Result<List<Map<String, Object>>> list(@RequestHeader("X-User-Id") String userIdStr,
                                                    @RequestParam(value = "planet", required = false) String planet,
-                                                   @RequestParam(value = "clubsOnly", required = false, defaultValue = "false") boolean clubsOnly) {
-        return Result.success(chatRoomService.listRooms(Long.parseLong(userIdStr), planet, clubsOnly));
+                                                   @RequestParam(value = "clubsOnly", required = false, defaultValue = "false") boolean clubsOnly,
+                                                   @RequestParam(value = "keyword", required = false) String keyword,
+                                                   @RequestParam(value = "sort", required = false, defaultValue = "newest") String sort) {
+        return Result.success(chatRoomService.listRooms(Long.parseLong(userIdStr), planet, clubsOnly, keyword, sort));
     }
 
     @GetMapping("/{roomId}")
@@ -46,7 +48,7 @@ public class ChatRoomController {
                 Long.parseLong(userIdStr), username,
                 value(body, "name"), value(body, "description"), value(body, "icon"),
                 value(body, "type"), value(body, "planet"),
-                discoverable, value(body, "joinMode")));
+                discoverable, value(body, "joinMode"), value(body, "joinQuestion")));
     }
 
     @PutMapping("/{roomId}")
@@ -60,7 +62,7 @@ public class ChatRoomController {
                 Long.parseLong(userIdStr), roomId,
                 value(body, "name"), value(body, "description"), value(body, "icon"),
                 value(body, "type"), value(body, "planet"),
-                discoverable, value(body, "joinMode")));
+                discoverable, value(body, "joinMode"), value(body, "joinQuestion")));
     }
 
     // ==================== 加入/退出 ====================
@@ -68,8 +70,11 @@ public class ChatRoomController {
     @PostMapping("/{roomId}/join")
     @Operation(summary = "加入（根据 joinMode 自动处理）")
     public Result<Map<String, Object>> join(@PathVariable("roomId") Long roomId,
-                                            @RequestHeader("X-User-Id") String userIdStr) {
-        return Result.success(chatRoomService.joinRoom(Long.parseLong(userIdStr), roomId));
+                                            @RequestHeader("X-User-Id") String userIdStr,
+                                            @RequestHeader(value = "X-Username", required = false) String username,
+                                            @RequestBody(required = false) Map<String, Object> body) {
+        String answer = body != null ? value(body, "answer") : null;
+        return Result.success(chatRoomService.joinRoom(Long.parseLong(userIdStr), roomId, username, answer));
     }
 
     @PostMapping("/{roomId}/leave")
@@ -185,6 +190,51 @@ public class ChatRoomController {
                                  @RequestHeader("X-User-Id") String userIdStr) {
         chatRoomService.deleteClub(Long.parseLong(userIdStr), roomId);
         return Result.successMessage("已解散");
+    }
+
+    // ==================== 群公告 ====================
+
+    @PutMapping("/{roomId}/announcement")
+    @Operation(summary = "设置群公告")
+    public Result<String> setAnnouncement(@PathVariable("roomId") Long roomId,
+                                          @RequestBody Map<String, String> body,
+                                          @RequestHeader("X-User-Id") String userIdStr) {
+        chatRoomService.setAnnouncement(Long.parseLong(userIdStr), roomId, body.getOrDefault("announcement", ""));
+        return Result.successMessage("群公告已更新");
+    }
+
+    @DeleteMapping("/{roomId}/announcement")
+    @Operation(summary = "清除群公告")
+    public Result<String> clearAnnouncement(@PathVariable("roomId") Long roomId,
+                                            @RequestHeader("X-User-Id") String userIdStr) {
+        chatRoomService.clearAnnouncement(Long.parseLong(userIdStr), roomId);
+        return Result.successMessage("群公告已清除");
+    }
+
+    // ==================== 置顶消息 ====================
+
+    @PutMapping("/{roomId}/pin/{messageId}")
+    @Operation(summary = "置顶消息")
+    public Result<String> pinMessage(@PathVariable("roomId") Long roomId,
+                                     @PathVariable("messageId") Long messageId,
+                                     @RequestHeader("X-User-Id") String userIdStr) {
+        chatRoomService.pinMessage(Long.parseLong(userIdStr), roomId, messageId);
+        return Result.successMessage("已置顶");
+    }
+
+    @DeleteMapping("/{roomId}/pin")
+    @Operation(summary = "取消置顶")
+    public Result<String> unpinMessage(@PathVariable("roomId") Long roomId,
+                                       @RequestHeader("X-User-Id") String userIdStr) {
+        chatRoomService.unpinMessage(Long.parseLong(userIdStr), roomId);
+        return Result.successMessage("已取消置顶");
+    }
+
+    @GetMapping("/{roomId}/pinned")
+    @Operation(summary = "获取置顶消息")
+    public Result<Map<String, Object>> getPinnedMessage(@PathVariable("roomId") Long roomId) {
+        Map<String, Object> pinned = chatRoomService.getPinnedMessage(roomId);
+        return pinned != null ? Result.success(pinned) : Result.fail("无置顶消息");
     }
 
     // ==================== 内部调用 ====================

@@ -15,5 +15,6 @@ public class JoinRequest {
     private Long roomId;
     private Long userId;
     private String status; // "pending" / "approved" / "rejected"
+    private String answer; // 用户回答入群问题
     private LocalDateTime createdAt;
 }

@@ -6,6 +6,7 @@ import com.interstellar.common.model.User;
 import com.interstellar.common.push.DeviceTokenMapper;
 import com.interstellar.common.push.DeviceToken;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -25,8 +26,7 @@ public class UserService {
     @Autowired
     private DeviceTokenMapper deviceTokenMapper;
 
-    @Autowired
-    private PasswordEncoder passwordEncoder;
+    private final PasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
 
     public Result update(Long userId, UpdateUserRequest request) {
         if (request.getUsername() != null) {

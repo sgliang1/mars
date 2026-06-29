@@ -1,10 +1,12 @@
 package com.interstellar.chat.infrastructure.websocket;
 
+import com.interstellar.chat.infrastructure.presence.PresenceService;
 import com.interstellar.common.cache.CacheKeys;
 import com.interstellar.common.cache.CacheService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Component;
 
@@ -30,6 +32,10 @@ public class WebSocketSessionManager {
     @Autowired
     private CacheService cacheService;
 
+    @Lazy
+    @Autowired(required = false)
+    private PresenceService presenceService;
+
     /**
      * 用户上线：注册到 Redis 并记录本地状态
      * @param userId 用户 ID
@@ -40,6 +46,10 @@ public class WebSocketSessionManager {
         String redisKey = CacheKeys.key(CacheKeys.WS_ONLINE, userId);
         cacheService.set(redisKey, serverInstanceId, CacheKeys.WS_ONLINE_TTL);
         log.debug("用户上线: userId={}, instance={}", userId, serverInstanceId);
+        // 记录用户活跃时间
+        if (presenceService != null) {
+            presenceService.recordActivity(userId);
+        }
     }
 
     /**

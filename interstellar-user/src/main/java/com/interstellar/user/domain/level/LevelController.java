@@ -13,7 +13,7 @@ import java.util.Map;
 
 @RestController
 @RequestMapping("/level")
-@Tag(name = "等级体系", description = "用户等级与经验值")
+@Tag(name = "漫游等级", description = "用户漫游等级与经验值")
 class LevelController {
 
     @Autowired private LevelService levelService;
@@ -60,12 +60,12 @@ class LevelController {
     @Operation(summary = "等级规则", description = "返回等级名称、所需经验值、权益")
     public Result<List<Map<String, Object>>> getLevelRules() {
         List<Map<String, Object>> rules = java.util.Arrays.asList(
-                Map.of("level", 1, "name", "新手", "expRequired", 0, "icon", "🌱"),
-                Map.of("level", 2, "name", "初级", "expRequired", 100, "icon", "⭐"),
-                Map.of("level", 3, "name", "中级", "expRequired", 500, "icon", "🔥"),
-                Map.of("level", 4, "name", "高级", "expRequired", 1500, "icon", "💎"),
-                Map.of("level", 5, "name", "资深", "expRequired", 5000, "icon", "👑"),
-                Map.of("level", 6, "name", "大师", "expRequired", 15000, "icon", "🏆")
+                Map.of("level", 1, "name", "漫游新人", "expRequired", 0, "icon", "🌱"),
+                Map.of("level", 2, "name", "星际旅客", "expRequired", 100, "icon", "⭐"),
+                Map.of("level", 3, "name", "资深漫游者", "expRequired", 500, "icon", "🔥"),
+                Map.of("level", 4, "name", "星际探险家", "expRequired", 1500, "icon", "💎"),
+                Map.of("level", 5, "name", "深空领航员", "expRequired", 5000, "icon", "👑"),
+                Map.of("level", 6, "name", "星际大师", "expRequired", 15000, "icon", "🏆")
         );
         return Result.success(rules);
     }

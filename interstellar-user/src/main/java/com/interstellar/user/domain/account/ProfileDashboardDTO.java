@@ -21,4 +21,9 @@ public class ProfileDashboardDTO {
     private Integer expPoints;
     private String levelName;
     private Integer creditScore;
+    private Integer reputation;  // 声望分
+
+    // 在线状态
+    private String lastActiveAt;
+    private boolean online;
 }

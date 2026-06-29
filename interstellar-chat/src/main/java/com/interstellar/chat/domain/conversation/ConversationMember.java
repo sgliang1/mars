@@ -15,6 +15,8 @@ public class ConversationMember {
     private Long conversationId;
     private Long userId;
     private String role;
+    private String nickname;
+    private String avatarUrl;
     private Integer unreadCount;
     private Boolean muted;
     private Boolean pinned;

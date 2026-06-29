@@ -1,6 +1,7 @@
 package com.interstellar.admin.domain.moderation;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.interstellar.api.UserFeignClient;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -21,6 +22,8 @@ public class AdminReportService {
 
     @Autowired
     private JdbcTemplate jdbcTemplate;
+    @Autowired
+    private UserFeignClient userFeignClient;
 
     /**
      * 处理举报（确认违规/忽略，级联操作加事务保护）
@@ -42,6 +45,17 @@ public class AdminReportService {
         if ("confirm_violation".equals(action)) {
             handleConfirmViolation(reportId, targetType, targetId, postAction,
                     banDays, reason, handlerId, handlerName);
+
+            // 举报核实：举报人声望 +5
+            try {
+                Long reporterId = ((Number) report.get("reporter_id")).longValue();
+                userFeignClient.addReputation(java.util.Map.of(
+                        "userId", reporterId,
+                        "amount", 5,
+                        "sourceType", "report_confirmed",
+                        "sourceId", reportId,
+                        "description", "举报核实通过"));
+            } catch (Exception ignored) {}
         } else {
             handleIgnore(reportId, targetType, targetId, reason, handlerId);
         }

@@ -9,21 +9,21 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 /**
- * 等级经验值服务
+ * 漫游等级经验值服务
  *
  * 经验值获取规则：
  *   发帖 +10 | 评论 +3 | 被点赞 +2 | 被收藏 +5 | 每日登录 +5
  *
  * 等级阈值：
- *   1(新手,0) | 2(初级,100) | 3(中级,500) | 4(高级,1500) | 5(资深,5000) | 6(大师,15000)
+ *   1(漫游新人,0) | 2(星际旅客,100) | 3(资深漫游者,500) | 4(星际探险家,1500) | 5(深空领航员,5000) | 6(星际大师,15000)
  */
 @Service
-class LevelService {
+public class LevelService {
 
     @Autowired private JdbcTemplate jdbcTemplate;
 
     private static final int[] LEVEL_THRESHOLDS = {0, 0, 100, 500, 1500, 5000, 15000};
-    private static final String[] LEVEL_NAMES = {"", "新手", "初级", "中级", "高级", "资深", "大师"};
+    private static final String[] LEVEL_NAMES = {"", "漫游新人", "星际旅客", "资深漫游者", "星际探险家", "深空领航员", "星际大师"};
 
     /**
      * 增加经验值并自动升级

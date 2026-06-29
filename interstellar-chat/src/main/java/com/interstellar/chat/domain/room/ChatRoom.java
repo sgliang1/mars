@@ -22,9 +22,12 @@ public class ChatRoom {
     private String planet;      // 所属星球（可为空）
     private Integer discoverable; // 1=可发现, 0=隐藏
     private String joinMode;    // "open" / "approval" / "closed"
+    private String joinQuestion; // 入群审批问题（仅 joinMode=approval 时生效）
     private Integer maxMembers;
     private Integer memberCount;
     private Integer status; // 1=active, 0=closed
+    private String announcement;    // 群公告
+    private Long pinnedMessageId;   // 置顶消息ID
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 }

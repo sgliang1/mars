@@ -34,9 +34,13 @@ public class UserProfile {
     private Integer expPoints;      // 经验值
     private String levelName;       // 等级名称
     private Integer creditScore;    // 信用分（满分100）
+    private Integer reputation;     // 声望分（正向累积）
 
     // 主题偏好
     private String theme;           // dark / light
     private String themePreset;     // 预置主题 id，如 "default"
     private String themeAccent;     // 自定义主题色 hex，如 "ffff3333"
+
+    // 在线状态
+    private LocalDateTime lastActiveAt;
 }

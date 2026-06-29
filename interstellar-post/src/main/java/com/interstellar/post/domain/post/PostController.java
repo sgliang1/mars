@@ -238,6 +238,24 @@ public class PostController {
         return Result.success(attachPostExtras(result.getRecords(), userIdStr));
     }
 
+    /**
+     * 俱乐部帖子列表
+     */
+    @GetMapping("/club/{clubId}")
+    @Operation(summary = "俱乐部帖子列表")
+    public Result<List<Post>> clubPosts(@PathVariable("clubId") Long clubId,
+                                         @RequestHeader(value = "X-User-Id", required = false) String userIdStr,
+                                         @RequestParam(value = "page", defaultValue = "1") int page,
+                                         @RequestParam(value = "size", defaultValue = "20") int size) {
+        Page<Post> pageParam = new Page<>(page, size);
+        Page<Post> result = postMapper.selectPage(pageParam, new QueryWrapper<Post>()
+                .eq("club_id", clubId)
+                .eq("display_status", 1)
+                .isNull("deleted_at")
+                .orderByDesc("create_time"));
+        return Result.success(attachPostExtras(result.getRecords(), userIdStr));
+    }
+
     private List<Post> attachPostExtras(List<Post> postList, String userIdStr) {
         if (postList.isEmpty()) return postList;
 

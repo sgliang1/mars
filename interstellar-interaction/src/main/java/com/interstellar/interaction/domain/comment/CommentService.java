@@ -6,6 +6,7 @@ import com.interstellar.interaction.domain.post.PostMapper;
 import com.interstellar.interaction.domain.post.PostMentionEntity;
 import com.interstellar.interaction.domain.post.PostMentionMapper;
 import com.interstellar.common.util.SanitizeUtil;
+import com.interstellar.api.UserFeignClient;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.core.RedisTemplate;
@@ -22,6 +23,7 @@ public class CommentService {
     @Autowired private PostMentionMapper postMentionMapper;
     @Autowired private NotificationHelper notificationHelper;
     @Autowired private RedisTemplate<String, Object> redisTemplate;
+    @Autowired private UserFeignClient userFeignClient;
 
     @Transactional
     public Comment addComment(Comment comment) {
@@ -70,6 +72,16 @@ public class CommentService {
         // Feed 缓存失效：Redis Pub/Sub 事件驱动（标准模式）
         try {
             redisTemplate.convertAndSend("interstellar:event:feed:evict", "hot");
+        } catch (Exception ignored) {}
+
+        // 声望 +2（评论奖励）
+        try {
+            userFeignClient.addReputation(java.util.Map.of(
+                    "userId", comment.getUserId(),
+                    "amount", 2,
+                    "sourceType", "comment",
+                    "sourceId", comment.getId(),
+                    "description", "评论奖励"));
         } catch (Exception ignored) {}
 
         return comment;

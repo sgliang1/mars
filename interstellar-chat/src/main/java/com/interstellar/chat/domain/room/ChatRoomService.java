@@ -6,6 +6,7 @@ import com.interstellar.chat.domain.message.ConversationMessage;
 import com.interstellar.chat.domain.message.ConversationMessageMapper;
 import com.interstellar.common.util.SanitizeUtil;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -28,14 +29,15 @@ public class ChatRoomService {
     private ConversationMessageMapper conversationMessageMapper;
     @Autowired
     private JoinRequestMapper joinRequestMapper;
+    @Autowired
+    private JdbcTemplate jdbcTemplate;
 
     // ==================== 列表 ====================
 
-    public List<Map<String, Object>> listRooms(Long userId, String planet, boolean clubsOnly) {
+    public List<Map<String, Object>> listRooms(Long userId, String planet, boolean clubsOnly,
+                                                String keyword, String sort) {
         LambdaQueryWrapper<ChatRoom> wrapper = new LambdaQueryWrapper<ChatRoom>()
-                .eq(ChatRoom::getStatus, 1)
-                .orderByDesc(ChatRoom::getUpdatedAt)
-                .orderByDesc(ChatRoom::getId);
+                .eq(ChatRoom::getStatus, 1);
 
         if (StringUtils.hasText(planet)) {
             wrapper.eq(ChatRoom::getPlanet, planet);
@@ -45,6 +47,20 @@ public class ChatRoomService {
             wrapper.isNotNull(ChatRoom::getPlanet)
                    .ne(ChatRoom::getPlanet, "")
                    .eq(ChatRoom::getDiscoverable, 1);
+        }
+        // 关键词搜索
+        if (StringUtils.hasText(keyword)) {
+            wrapper.and(w -> w.like(ChatRoom::getName, keyword)
+                    .or()
+                    .like(ChatRoom::getDescription, keyword));
+        }
+        // 排序
+        String safeSort = sort == null ? "newest" : sort;
+        switch (safeSort) {
+            case "members" -> wrapper.orderByDesc(ChatRoom::getMemberCount);
+            case "active" -> wrapper.orderByDesc(ChatRoom::getUpdatedAt);
+            default -> wrapper.orderByDesc(ChatRoom::getCreatedAt)
+                              .orderByDesc(ChatRoom::getId);
         }
 
         List<ChatRoom> rooms = chatRoomMapper.selectList(wrapper);
@@ -63,13 +79,22 @@ public class ChatRoomService {
     @Transactional
     public Map<String, Object> createRoom(Long userId, String username, String name,
                                           String description, String icon, String type,
-                                          String planet, Integer discoverable, String joinMode) {
+                                          String planet, Integer discoverable, String joinMode,
+                                          String joinQuestion) {
         String safeName = SanitizeUtil.stripHtml(StringUtils.hasText(name) ? name.trim() : "聊天室");
         String safeDesc = SanitizeUtil.stripHtml(StringUtils.hasText(description) ? description.trim() : "欢迎加入");
         String safeIcon = StringUtils.hasText(icon) ? icon.trim() : "";
         String safeType = "private".equals(type) ? "private" : "public";
         String safePlanet = StringUtils.hasText(planet) ? planet.trim() : null;
         String safeJoinMode = ("approval".equals(joinMode) || "closed".equals(joinMode)) ? joinMode : "open";
+
+        // 一人一俱乐部约束（仅俱乐部，普通聊天室不受限制）
+        if (safePlanet != null) {
+            Long existingClubId = findUserClubId(userId);
+            if (existingClubId != null) {
+                throw new IllegalArgumentException("你已加入其他俱乐部，请先退出后再创建");
+            }
+        }
         int safeDiscoverable = (discoverable != null && discoverable == 0) ? 0 : 1;
         LocalDateTime now = LocalDateTime.now();
 
@@ -100,6 +125,7 @@ public class ChatRoomService {
         room.setPlanet(safePlanet);
         room.setDiscoverable(safeDiscoverable);
         room.setJoinMode(safeJoinMode);
+        room.setJoinQuestion(StringUtils.hasText(joinQuestion) ? SanitizeUtil.stripHtml(joinQuestion.trim()) : "");
         room.setMaxMembers(500);
         room.setMemberCount(1);
         room.setStatus(1);
@@ -112,6 +138,7 @@ public class ChatRoomService {
         member.setConversationId(conversation.getId());
         member.setUserId(userId);
         member.setRole("owner");
+        member.setNickname(StringUtils.hasText(username) ? username : "");
         member.setUnreadCount(0);
         member.setMuted(false);
         member.setPinned(false);
@@ -136,10 +163,16 @@ public class ChatRoomService {
     // ==================== 加入 ====================
 
     @Transactional
-    public Map<String, Object> joinRoom(Long userId, Long roomId) {
+    public Map<String, Object> joinRoom(Long userId, Long roomId, String username, String answer) {
         ChatRoom room = requireRoom(roomId);
         if (isMember(room.getConversationId(), userId)) {
             return toRoomMap(room, true, getUserRole(room.getConversationId(), userId));
+        }
+
+        // 一人一俱乐部约束
+        Long existingClubId = findUserClubId(userId);
+        if (existingClubId != null) {
+            throw new IllegalArgumentException("你已加入其他俱乐部，请先退出后再加入");
         }
 
         String joinMode = room.getJoinMode() == null ? "open" : room.getJoinMode();
@@ -158,19 +191,26 @@ public class ChatRoomService {
             req.setRoomId(roomId);
             req.setUserId(userId);
             req.setStatus("pending");
+            req.setAnswer(answer != null ? SanitizeUtil.stripHtml(answer.trim()) : "");
             req.setCreatedAt(LocalDateTime.now());
             joinRequestMapper.insert(req);
             throw new IllegalArgumentException("已提交加入申请，请等待审批");
         }
 
         // open mode - direct join
-        return doJoin(room, userId, "member");
+        return doJoin(room, userId, "member", username);
     }
 
     @Transactional
     public Map<String, Object> approveJoin(Long operatorId, Long roomId, Long targetUserId) {
         ChatRoom room = requireRoom(roomId);
         requireRole(room, operatorId, "owner", "admin");
+
+        // 一人一俱乐部约束
+        Long existingClubId = findUserClubId(targetUserId);
+        if (existingClubId != null) {
+            throw new IllegalArgumentException("该用户已加入其他俱乐部");
+        }
 
         JoinRequest req = joinRequestMapper.selectOne(
                 new LambdaQueryWrapper<JoinRequest>()
@@ -181,7 +221,7 @@ public class ChatRoomService {
         req.setStatus("approved");
         joinRequestMapper.updateById(req);
 
-        return doJoin(room, targetUserId, "member");
+        return doJoin(room, targetUserId, "member", null);
     }
 
     @Transactional
@@ -209,6 +249,7 @@ public class ChatRoomService {
             Map<String, Object> data = new LinkedHashMap<>();
             data.put("userId", r.getUserId().toString());
             data.put("status", r.getStatus());
+            data.put("answer", r.getAnswer() == null ? "" : r.getAnswer());
             data.put("createdAt", r.getCreatedAt() == null ? "" : r.getCreatedAt().toString());
             return data;
         }).toList();
@@ -226,7 +267,7 @@ public class ChatRoomService {
         if (isMember(room.getConversationId(), targetUserId)) {
             throw new IllegalArgumentException("用户已是成员");
         }
-        doJoin(room, targetUserId, "member");
+        doJoin(room, targetUserId, "member", null);
     }
 
     // ==================== 退出 ====================
@@ -265,15 +306,22 @@ public class ChatRoomService {
     }
 
     public String getUserClubName(Long userId) {
-        List<ConversationMember> ownerships = conversationMemberMapper.selectList(
+        // 查找用户所属的所有俱乐部（不再仅限 owner），优先级 owner > admin > member
+        List<ConversationMember> memberships = conversationMemberMapper.selectList(
                 new LambdaQueryWrapper<ConversationMember>()
-                        .eq(ConversationMember::getUserId, userId)
-                        .eq(ConversationMember::getRole, "owner"));
-        for (ConversationMember m : ownerships) {
+                        .eq(ConversationMember::getUserId, userId));
+        // 按角色优先级排序
+        Map<String, Integer> rolePriority = Map.of("owner", 0, "admin", 1, "member", 2);
+        memberships.sort(Comparator.comparingInt(m ->
+                rolePriority.getOrDefault(m.getRole(), 99)));
+
+        for (ConversationMember m : memberships) {
             ChatRoom room = chatRoomMapper.selectOne(
                     new LambdaQueryWrapper<ChatRoom>()
                             .eq(ChatRoom::getConversationId, m.getConversationId())
-                            .eq(ChatRoom::getStatus, 1));
+                            .eq(ChatRoom::getStatus, 1)
+                            .isNotNull(ChatRoom::getPlanet)
+                            .ne(ChatRoom::getPlanet, ""));
             if (room != null) return room.getName();
         }
         return "";
@@ -284,7 +332,7 @@ public class ChatRoomService {
     @Transactional
     public Map<String, Object> updateRoom(Long userId, Long roomId, String name, String description,
                                           String icon, String type, String planet,
-                                          Integer discoverable, String joinMode) {
+                                          Integer discoverable, String joinMode, String joinQuestion) {
         ChatRoom room = requireRoom(roomId);
         requireRole(room, userId, "owner", "admin");
 
@@ -295,6 +343,7 @@ public class ChatRoomService {
         if (planet != null) room.setPlanet(StringUtils.hasText(planet) ? planet.trim() : null);
         if (discoverable != null) room.setDiscoverable(discoverable == 0 ? 0 : 1);
         if (StringUtils.hasText(joinMode)) room.setJoinMode(joinMode);
+        if (joinQuestion != null) room.setJoinQuestion(SanitizeUtil.stripHtml(joinQuestion.trim()));
         room.setUpdatedAt(LocalDateTime.now());
         chatRoomMapper.updateById(room);
 
@@ -314,6 +363,8 @@ public class ChatRoomService {
             Map<String, Object> data = new LinkedHashMap<>();
             data.put("userId", m.getUserId().toString());
             data.put("role", m.getRole());
+            data.put("nickname", m.getNickname() == null ? "" : m.getNickname());
+            data.put("avatarUrl", m.getAvatarUrl() == null ? "" : m.getAvatarUrl());
             data.put("muted", m.getMuted() != null && m.getMuted());
             data.put("joinedAt", m.getJoinedAt() == null ? "" : m.getJoinedAt().toString());
             return data;
@@ -403,7 +454,7 @@ public class ChatRoomService {
 
     // ==================== Helpers ====================
 
-    private Map<String, Object> doJoin(ChatRoom room, Long userId, String role) {
+    private Map<String, Object> doJoin(ChatRoom room, Long userId, String role, String username) {
         if (room.getMaxMembers() != null && room.getMemberCount() != null
                 && room.getMemberCount() >= room.getMaxMembers()) {
             throw new IllegalArgumentException("成员已满");
@@ -412,6 +463,7 @@ public class ChatRoomService {
         member.setConversationId(room.getConversationId());
         member.setUserId(userId);
         member.setRole(role);
+        member.setNickname(StringUtils.hasText(username) ? username : "");
         member.setUnreadCount(0);
         member.setMuted(false);
         member.setPinned(false);
@@ -433,6 +485,26 @@ public class ChatRoomService {
                         .eq(ConversationMember::getConversationId, conversationId)
                         .eq(ConversationMember::getUserId, userId));
         return count != null && count > 0;
+    }
+
+    /**
+     * 查找用户已加入的俱乐部 roomId，用于一人一俱乐部约束。
+     * 返回 null 表示用户未加入任何俱乐部。
+     */
+    private Long findUserClubId(Long userId) {
+        List<ConversationMember> memberships = conversationMemberMapper.selectList(
+                new LambdaQueryWrapper<ConversationMember>()
+                        .eq(ConversationMember::getUserId, userId));
+        for (ConversationMember m : memberships) {
+            ChatRoom room = chatRoomMapper.selectOne(
+                    new LambdaQueryWrapper<ChatRoom>()
+                            .eq(ChatRoom::getConversationId, m.getConversationId())
+                            .eq(ChatRoom::getStatus, 1)
+                            .isNotNull(ChatRoom::getPlanet)
+                            .ne(ChatRoom::getPlanet, ""));
+            if (room != null) return room.getId();
+        }
+        return null;
     }
 
     private String getUserRole(Long conversationId, Long userId) {
@@ -480,14 +552,90 @@ public class ChatRoomService {
         data.put("planet", room.getPlanet() == null ? "" : room.getPlanet());
         data.put("discoverable", room.getDiscoverable() == null ? 1 : room.getDiscoverable());
         data.put("joinMode", room.getJoinMode() == null ? "open" : room.getJoinMode());
+        data.put("joinQuestion", room.getJoinQuestion() == null ? "" : room.getJoinQuestion());
         data.put("creatorId", room.getCreatorId() == null ? "" : room.getCreatorId().toString());
         data.put("creatorName", room.getCreatorName() == null ? "" : room.getCreatorName());
         data.put("memberCount", room.getMemberCount() == null ? 0 : room.getMemberCount());
         data.put("maxMembers", room.getMaxMembers() == null ? 500 : room.getMaxMembers());
         data.put("joined", joined);
         data.put("role", userRole == null ? "" : userRole);
+        data.put("announcement", room.getAnnouncement() == null ? "" : room.getAnnouncement());
+        data.put("pinnedMessageId", room.getPinnedMessageId() == null ? "" : room.getPinnedMessageId().toString());
         data.put("createdAt", room.getCreatedAt() == null ? "" : room.getCreatedAt().toString());
         data.put("updatedAt", room.getUpdatedAt() == null ? "" : room.getUpdatedAt().toString());
         return data;
+    }
+
+    // ==================== 群公告 ====================
+
+    @Transactional
+    public void setAnnouncement(Long userId, Long roomId, String announcement) {
+        ChatRoom room = requireRoom(roomId);
+        requireRole(room, userId, "owner", "admin");
+        room.setAnnouncement(SanitizeUtil.stripHtml(announcement));
+        room.setUpdatedAt(LocalDateTime.now());
+        chatRoomMapper.updateById(room);
+
+        // 发送系统消息通知公告变更
+        ConversationMessage sysMsg = new ConversationMessage();
+        sysMsg.setConversationId(room.getConversationId());
+        sysMsg.setSenderId(0L);
+        sysMsg.setSenderName("系统");
+        sysMsg.setContent("群公告已更新：" + room.getAnnouncement());
+        sysMsg.setMessageType(0);
+        sysMsg.setDeliveryStatus("sent");
+        sysMsg.setCreatedAt(LocalDateTime.now());
+        conversationMessageMapper.insert(sysMsg);
+    }
+
+    public void clearAnnouncement(Long userId, Long roomId) {
+        ChatRoom room = requireRoom(roomId);
+        requireRole(room, userId, "owner", "admin");
+        room.setAnnouncement(null);
+        room.setUpdatedAt(LocalDateTime.now());
+        chatRoomMapper.updateById(room);
+    }
+
+    // ==================== 置顶消息 ====================
+
+    @Transactional
+    public void pinMessage(Long userId, Long roomId, Long messageId) {
+        ChatRoom room = requireRoom(roomId);
+        requireRole(room, userId, "owner", "admin");
+
+        // 取消之前的置顶
+        if (room.getPinnedMessageId() != null) {
+            jdbcTemplate.update("UPDATE conversation_message SET is_pinned = 0 WHERE id = ?",
+                    room.getPinnedMessageId());
+        }
+
+        room.setPinnedMessageId(messageId);
+        room.setUpdatedAt(LocalDateTime.now());
+        chatRoomMapper.updateById(room);
+
+        jdbcTemplate.update("UPDATE conversation_message SET is_pinned = 1 WHERE id = ?", messageId);
+    }
+
+    public void unpinMessage(Long userId, Long roomId) {
+        ChatRoom room = requireRoom(roomId);
+        requireRole(room, userId, "owner", "admin");
+
+        if (room.getPinnedMessageId() != null) {
+            jdbcTemplate.update("UPDATE conversation_message SET is_pinned = 0 WHERE id = ?",
+                    room.getPinnedMessageId());
+        }
+        room.setPinnedMessageId(null);
+        room.setUpdatedAt(LocalDateTime.now());
+        chatRoomMapper.updateById(room);
+    }
+
+    public Map<String, Object> getPinnedMessage(Long roomId) {
+        ChatRoom room = requireRoom(roomId);
+        if (room.getPinnedMessageId() == null) return null;
+
+        List<Map<String, Object>> msgs = jdbcTemplate.queryForList(
+                "SELECT id, sender_id, sender_name, content, message_type, created_at " +
+                "FROM conversation_message WHERE id = ?", room.getPinnedMessageId());
+        return msgs.isEmpty() ? null : msgs.get(0);
     }
 }

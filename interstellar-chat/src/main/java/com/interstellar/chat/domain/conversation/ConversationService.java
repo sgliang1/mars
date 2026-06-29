@@ -16,6 +16,7 @@ import com.interstellar.chat.domain.notification.NotificationService;
 import com.interstellar.chat.infrastructure.websocket.ChatWebSocketHandler;
 import com.interstellar.common.cache.CacheKeys;
 import com.interstellar.common.cache.CacheService;
+import com.interstellar.api.InteractionFeignClient;
 
 import java.net.URLDecoder;
 import java.net.URLEncoder;
@@ -46,6 +47,9 @@ public class ConversationService {
 
     @Autowired
     private NotificationService notificationService;
+
+    @Autowired
+    private InteractionFeignClient interactionFeignClient;
 
     @Autowired
     private CacheService cacheService;
@@ -321,6 +325,12 @@ public class ConversationService {
         } catch (Exception e) {
             log.warn("WebSocket 推送失败: conversationId={}, error={}", conversationId, e.getMessage());
         }
+
+        // 实时讨论消息同步到评论区
+        syncDiscussionToComment(conversation, userId, senderName, text, messageType);
+
+        // 更新实时讨论活跃时间
+        updateDiscussionActivity(conversation);
 
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("summary", toSummaryMap(conversation, currentMember == null ? requireMember(conversationId, userId) : currentMember, userId));
@@ -664,5 +674,58 @@ public class ConversationService {
         } catch (Exception ignored) {
             return 0L;
         }
+    }
+
+    /**
+     * 实时讨论消息同步到评论区。
+     * 当会话 bizKey 以 "post-discuss-" 开头时，将消息异步写入评论。
+     */
+    private void syncDiscussionToComment(Conversation conversation, Long userId,
+                                          String senderName, String content, int messageType) {
+        if (messageType != 0) return; // 只同步普通文本消息
+        String bizKey = conversation.getBizKey();
+        if (bizKey == null || !bizKey.startsWith("post-discuss-")) return;
+
+        String postId = bizKey.substring("post-discuss-".length());
+        if (!StringUtils.hasText(postId)) return;
+
+        try {
+            Map<String, Object> commentData = new LinkedHashMap<>();
+            commentData.put("postId", Long.parseLong(postId));
+            commentData.put("content", "[来自实时讨论] " + content);
+
+            interactionFeignClient.addComment(
+                    commentData,
+                    userId.toString(),
+                    StringUtils.hasText(senderName) ? senderName : "匿名用户"
+            );
+        } catch (Exception e) {
+            log.warn("实时讨论同步评论失败: postId={}, error={}", postId, e.getMessage());
+        }
+    }
+
+    /**
+     * 更新帖子实时讨论的最后活跃时间。
+     */
+    private void updateDiscussionActivity(Conversation conversation) {
+        String bizKey = conversation.getBizKey();
+        if (bizKey == null || !bizKey.startsWith("post-discuss-")) return;
+        try {
+            String key = CacheKeys.DISCUSSION_ACTIVE + conversation.getId();
+            cacheService.set(key, System.currentTimeMillis(), CacheKeys.DISCUSSION_ACTIVE_TTL);
+        } catch (Exception e) {
+            log.warn("更新讨论活跃时间失败: {}", e.getMessage());
+        }
+    }
+
+    /**
+     * 检查帖子实时讨论是否活跃（5 分钟内有消息）。
+     */
+    public boolean isDiscussionActive(Long conversationId) {
+        String key = CacheKeys.DISCUSSION_ACTIVE + conversationId;
+        Object lastActive = cacheService.get(key);
+        if (lastActive == null) return false;
+        long last = Long.parseLong(lastActive.toString());
+        return (System.currentTimeMillis() - last) < 5 * 60 * 1000;
     }
 }

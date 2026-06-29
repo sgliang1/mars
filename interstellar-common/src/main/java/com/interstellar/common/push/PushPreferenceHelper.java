@@ -38,4 +38,20 @@ public class PushPreferenceHelper {
         NotificationPreference pref = getPreference(userId);
         return Boolean.TRUE.equals(pref.getChatPushEnabled()) && !pref.isInQuietHours();
     }
+
+    /**
+     * 按通知类型判断是否应该推送（精细化控制）
+     */
+    public boolean shouldPushByType(Long userId, String sourceType) {
+        NotificationPreference pref = getPreference(userId);
+        if (pref.isInQuietHours()) return false;
+        return switch (sourceType != null ? sourceType : "") {
+            case "like" -> Boolean.TRUE.equals(pref.getLikePushEnabled());
+            case "comment" -> Boolean.TRUE.equals(pref.getCommentPushEnabled());
+            case "follow" -> Boolean.TRUE.equals(pref.getFollowPushEnabled());
+            case "system" -> Boolean.TRUE.equals(pref.getSystemEnabled());
+            case "broadcast" -> Boolean.TRUE.equals(pref.getBroadcastPushEnabled());
+            default -> Boolean.TRUE.equals(pref.getInteractionEnabled());
+        };
+    }
 }

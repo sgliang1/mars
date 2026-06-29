@@ -88,9 +88,18 @@ public final class CacheKeys {
     public static final String WS_ONLINE = "interstellar:ws:online:";
     public static final Duration WS_ONLINE_TTL = Duration.ofMinutes(2);
 
+    /** 帖子实时讨论最后活跃时间 */
+    public static final String DISCUSSION_ACTIVE = "interstellar:discussion:active:";
+    public static final Duration DISCUSSION_ACTIVE_TTL = Duration.ofMinutes(10);
+
     /** 消息 ACK 状态 */
     public static final String WS_ACK = "interstellar:ws:ack:";
     public static final Duration WS_ACK_TTL = Duration.ofHours(24);
+
+    // ==================== 用户活跃状态 ====================
+    /** 用户活跃节流（防止频繁写 DB） */
+    public static final String USER_ACTIVE_THROTTLE = "interstellar:user:active:";
+    public static final Duration USER_ACTIVE_THROTTLE_TTL = Duration.ofMinutes(5);
 
     // ==================== 搜索 ====================
     /** 搜索防重锁 */

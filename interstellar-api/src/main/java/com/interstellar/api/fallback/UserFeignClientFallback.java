@@ -18,4 +18,10 @@ public class UserFeignClientFallback implements UserFeignClient {
         log.warn("UserFeignClient fallback: searchUsers(q={})", q);
         return Result.success(Collections.emptyList());
     }
+
+    @Override
+    public Result<Void> addReputation(Map<String, Object> body) {
+        log.warn("UserFeignClient fallback: addReputation userId={}", body.get("userId"));
+        return Result.success(null);
+    }
 }
